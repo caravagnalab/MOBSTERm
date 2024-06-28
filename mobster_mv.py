@@ -8,27 +8,24 @@ from torch.distributions import constraints
 import matplotlib.pyplot as plt
 from scipy.stats import binom, beta, pareto
 
-# data, K=1, tail=1, truncated_pareto = True, purity=0.96,  number_of_trials_clonal_mean=500., number_of_trials_k=300.,
-        #  prior_lims_clonal=[0.1, 100000.], prior_lims_k=[0.1, 100000.], alpha_precision_concentration = 2, alpha_precision_rate=0.01, epsilon_ccf = 0.01
-
 class mobster_MV():
     def __init__(self, NV, DP, K=1, tail=1, truncated_pareto = True, purity=1):
 
         """
-        Parameters
-        ----------
-        NV : numpy array
-            A numpy array containing the NV for each sample -> NV : [NV_s1, NV_s2, ..., NV_sn]
-        DP : numpy array
-            A numpy array containing the DP for each sample -> DP : [DP_s1, DP_s2, ..., DP_sn]
-        K : int
-            Number of clonal/subclonal clusters
-        tail: int
-            1 if inference is to perform with Pareto tail, 0 otherwise
-        truncated_pareto: bool
-            True if the pareto needs to be truncated at the mean of the lowest clonal cluster
-        purity: float
-            Previously estimated purity of the tumor
+        Parameters:
+        
+            NV : numpy array
+                A numpy array containing the NV for each sample -> NV : [NV_s1, NV_s2, ..., NV_sn]
+            DP : numpy array
+                A numpy array containing the DP for each sample -> DP : [DP_s1, DP_s2, ..., DP_sn]
+            K : int
+                Number of clonal/subclonal clusters
+            tail: int
+                1 if inference is to perform with Pareto tail, 0 otherwise
+            truncated_pareto: bool
+                True if the pareto needs to be truncated at the mean of the lowest clonal cluster
+            purity: float
+                Previously estimated purity of the tumor
         """   
 
         self.NV = np.array(NV)
