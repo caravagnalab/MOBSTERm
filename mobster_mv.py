@@ -10,7 +10,6 @@ from scipy.stats import binom, beta, pareto
 
 class mobster_MV():
     def __init__(self, NV, DP, K=1, tail=1, truncated_pareto = True, purity=1):
-
         """
         Parameters:
         
@@ -73,7 +72,7 @@ class mobster_MV():
             pyro.factor("lik", self.log_sum_exp(self.m_binomial_lk(probs, DP, weights, K, NV)).sum()) # .sum() sums over the data because we have a log-likelihood
 
 
-    def m_binom_guide(self):
+    def guide(self):
         """
         Define the guide for the model.
         """
@@ -147,6 +146,19 @@ class mobster_MV():
         plt.legend()
         plt.show()
         
+    def compute_posteriors(self):
+        """
+        Compute posterior assignment probabilities (i.e., the responsibilities) given the learned parameters.
+        """
+        # lks : K x N 
+        lks = self.m_binomial_lk(probs=self.params['probs_bin'], DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
+        # res : K x N
+        res = torch.zeros(self.K, len(self.NV))
+        norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size len(NV)
+        for k in range(len(self.res)): # iterate over the clusters
+            lks_k = lks[k] # take row k -> array of size len(NV)
+            res[k] = torch.exp(lks_k - norm_fact)
+        self.params["responsib"] = res
 
         
 
