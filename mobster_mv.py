@@ -38,6 +38,9 @@ class mobster_MV():
     def m_binomial_lk(self, probs, DP, weights, K, NV):
         """
         Compute multidimensional binomial likelihood.
+        This function returns a K x N matrix. Each entry contains the sum between the log-weight of the cluster and the log-prob of the data.
+        Assume independence between the D samples (i.e., sums the contributions):
+            log(pi_k) + sum^D log(Bin(NV_i | p_k, DP_i))
         """
         lk = torch.ones(K, len(NV)) # matrix with K rows and as many columns as the number of data
         if K == 1:
@@ -48,6 +51,12 @@ class mobster_MV():
         return lk
 
     def log_sum_exp(self, args):
+        """
+        Compute the log-sum-exp for each data point, i.e. the log-likelihood for each data point.
+        log(p(x_i | theta)) = log(exp(a_1), ..., exp(a_K))
+        where: a_k = log(pi_k) + sum^D log(Bin(x_{id} | DP_{id}, p_{dk})) 
+        This function returns a N dimensional vector, where each entry corresponds to the log-likelihood of each data point.
+        """
         c = torch.amax(args, dim=0)
         return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
 
@@ -69,8 +78,9 @@ class mobster_MV():
 
         # Data generation
         with pyro.plate("plate_data", len(NV)):
-            pyro.factor("lik", self.log_sum_exp(self.m_binomial_lk(probs, DP, weights, K, NV)).sum()) # .sum() sums over the data because we have a log-likelihood
-
+            # .sum() sums over the data because we have a log-likelihood (sums over the log-likelihood of each data)
+            pyro.factor("lik", self.log_sum_exp(self.m_binomial_lk(probs, DP, weights, K, NV)).sum())
+            
 
     def guide(self):
         """
@@ -96,7 +106,7 @@ class mobster_MV():
         """
         param_store = pyro.get_param_store()
         params = {}
-        params["probs_bin "] = param_store["probs_param"].clone().detach()
+        params["probs_bin"] = param_store["probs_param"].clone().detach()
         params["weights"] = param_store["weights_param"].clone().detach()
 
         return params
@@ -150,7 +160,7 @@ class mobster_MV():
         """
         Compute posterior assignment probabilities (i.e., the responsibilities) given the learned parameters.
         """
-        # lks : K x N 
+        # lks : K x N
         lks = self.m_binomial_lk(probs=self.params['probs_bin'], DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
         # res : K x N
         res = torch.zeros(self.K, len(self.NV))
@@ -159,6 +169,8 @@ class mobster_MV():
             lks_k = lks[k] # take row k -> array of size len(NV)
             res[k] = torch.exp(lks_k - norm_fact)
         self.params["responsib"] = res
+        # For each data point find the cluster assignment (si può creare anche una funzione a parte)
+        self.params["cluster_assignments"] = torch.argmax(self.params["cluster_probs"], dim = 0) # vector of dimension N
 
         
 
