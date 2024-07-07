@@ -8,9 +8,8 @@ from torch.distributions import constraints
 import matplotlib.pyplot as plt
 from scipy.stats import binom, beta, pareto
 from sklearn.cluster import KMeans
-from BoundedPareto import BoundedPareto
 
-class mobster_MV():
+class beta_MV():
     def __init__(self, NV = None, DP = None, K=1, tail=1, truncated_pareto = True, purity=1, seed=2):
         """
         Parameters:
@@ -29,16 +28,38 @@ class mobster_MV():
                 Previously estimated purity of the tumor
         """   
 
-        # if(NV is not None):
-        self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
-        # if(DP is not None):
-        self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
+        if(NV is not None):
+            self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
+        if(DP is not None):
+            self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
         self.K = K
         self.tail = tail
         self.truncated_pareto = truncated_pareto
         self.purity = purity
         self.seed = seed
     
+
+    def create_dataset(self, n_components = 2, n_samples = torch.tensor([1000, 2000]), total_counts = torch.tensor([100, 150]), probs = torch.tensor([[.1, .3], [.5, .6]]), seed = 1):
+        """
+        Function to create a multidimensional binomial mixture dataset.
+        """
+        pyro.set_rng_seed(seed)
+        self.NV = torch.ones([n_samples[0], 2])
+        self.NV[:,0] = dist.Binomial(total_count=total_counts[0], probs=probs[0,0]).sample([n_samples[0]]).squeeze(-1) # S1 for component 1
+        self.NV[:,1] = dist.Binomial(total_count=total_counts[0], probs=probs[0,1]).sample([n_samples[0]]).squeeze(-1) # S2 for component 1
+        self.DP = torch.ones([n_samples[0], 2]) * total_counts[0]
+        for i in range(1,n_components):
+            d = torch.ones([n_samples[i], 2])
+            d[:,0] = dist.Binomial(total_count=total_counts[i], probs=probs[i,0]).sample([n_samples[i]]).squeeze(-1) # S1 for component i
+            d[:,1] = dist.Binomial(total_count=total_counts[i], probs=probs[i,1]).sample([n_samples[i]]).squeeze(-1) # S2 for component i
+            c = torch.ones([n_samples[i], 2]) * total_counts[i]
+            self.NV = torch.concat((self.NV,d))
+            self.DP = torch.concat((self.DP,c))
+        # plt.xlim([0,1])
+        # plt.ylim([0,1])
+        plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1])
+        plt.title("VAF 2d spectrum")
+        
     def compute_kmeans_centers(self, seed):
         kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init="auto").fit((self.NV/self.DP).numpy())
         cluster = kmeans.labels_
@@ -58,7 +79,7 @@ class mobster_MV():
             lk[k, :] = torch.log(weights[k]) + dist.Binomial(total_count=DP, probs=probs[k, :]).log_prob(NV).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
-    
+
     def log_sum_exp(self, args):
         """
         Compute the log-sum-exp for each data point, i.e. the log-likelihood for each data point.
@@ -69,25 +90,6 @@ class mobster_MV():
         c = torch.amax(args, dim=0)
         return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
 
-    def log_beta_par_mix(self, probs, delta, alpha, a_beta, b_beta):
-        delta_pareto = torch.log(delta[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs) # 1x2 tensor
-        delta_beta = torch.log(delta[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs) # 1x2 tensor
-        
-        return self.log_sum_exp(torch.stack((delta_pareto, delta_beta), dim=0)) # creates a 2x2 tensor with torch.stack because log_sum_exp has dim=0
-
-    def m_total_lk(self, probs, probs_pareto, alpha, a_beta, b_beta, DP, weights, delta, K, NV):
-        lk = torch.ones(K, len(NV)) # matrix with K rows and as many columns as the number of data
-        if K == 1:
-            return torch.log(weights) + (dist.Binomial(total_count=DP, probs = probs).log_prob(NV) + self.log_beta_par_mix(probs, delta[0, :, :], alpha, a_beta, b_beta)).sum(axis=1) # simply does log(weights) + log(density)
-        for k in range(K):
-            # print(a_beta)
-            # print(b_beta)
-            # print(alpha)
-            lk[k, :] = torch.log(weights[k]) + (dist.Binomial(total_count=DP, probs=probs[k, :]).log_prob(NV) + self.log_beta_par_mix(probs[k, :], delta[k, :, :], alpha[k, :], a_beta, b_beta)).sum(axis=1) # sums over the data dimensions (columns)
-                                                                                                                    # put on each column of lk a different data; rows are the clusters
-        return lk
-
-    
     def model(self):
         """
         Define the model.
@@ -99,22 +101,17 @@ class mobster_MV():
         # Prior for the mixing weights
         weights = pyro.sample("weights", dist.Dirichlet(torch.ones(K)))
 
+        # Prior for success probabilities (each probability has 2 dimensions) for each component
         with pyro.plate("plate_dims", D):
-            with pyro.plate("plate_probs", K):
-                # Prior for the Beta-Pareto weights
-                delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2))) # delta is a K x D x 2 tensor
-                
-                a_beta = torch.ones(1) # a_beta is a K x D tensor
-                b_beta = torch.ones(1) # b_beta is a K x D tensor
-                # assume Beta prior for the success probabilities
-                probs_beta = pyro.sample("probs_beta", dist.Beta(a_beta, b_beta)) # probs_beta is a K x D tensor
-            
-                alpha = pyro.sample("alpha_pareto", dist.LogNormal(0, 100)) # alpha is a K x D tensor
-                probs_pareto = pyro.sample("probs_pareto", BoundedPareto(0.001, alpha, 1)) # probs_pareto is a K x D tensor
-
+        # probs = pyro.sample("probs", dist.Beta(1, 1).expand([D]).to_event(1)) # assume Beta prior for the success probabilities   
+            with pyro.plate("plate_probs", K):    
+                probs = pyro.sample("probs", dist.Beta(1, 1)) # assume Beta prior for the success probabilities
+        
         # Data generation
         with pyro.plate("plate_data", len(NV)):
-            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, DP, weights, delta, K, NV)).sum()) # .sum() sums over the data because we have a log-likelihood  
+            # .sum() sums over the data because we have a log-likelihood (sums over the log-likelihood of each data)
+            pyro.factor("lik", self.log_sum_exp(self.m_binomial_lk(probs, DP, weights, K, NV)).sum())
+            
 
     def guide(self):
         """
@@ -127,19 +124,13 @@ class mobster_MV():
         weights_param = pyro.param("weights_param", lambda: dist.Dirichlet(torch.ones(K)).sample(), constraint=constraints.simplex)
         pyro.sample("weights", dist.Delta(weights_param).to_event(1))
 
-        delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(K, D, 2)).sample(), constraint=constraints.simplex)
-    
-        alpha_param = pyro.param("alpha_param", torch.ones((K,D)), constraint=constraints.positive) # Use 0.8 as starting value
-
         probs_param = pyro.param("probs_param", self.kmeans_centers, constraint=constraints.interval(0.,1.))
         print(probs_param)
         
+        # Probability of success for each component
         with pyro.plate("plate_dims", D):
-            with pyro.plate("plate_probs", K):       
-                pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
-                pyro.sample("probs_pareto", BoundedPareto(0.001, alpha_param, 1))
-                pyro.sample("probs_beta", dist.Delta(probs_param))
-                pyro.sample("delta", dist.Delta(delta_param).to_event(1)) # not sure
+            with pyro.plate("plate_probs", K):
+                pyro.sample("probs", dist.Delta(probs_param))
 
     def get_parameters(self):
         """
@@ -149,8 +140,6 @@ class mobster_MV():
         params = {}
         params["probs_bin"] = param_store["probs_param"].clone().detach()
         params["weights"] = param_store["weights_param"].clone().detach()
-        params["delta"] = param_store["delta_param"].clone().detach()
-        params["alpha_pareto"] = param_store["alpha_param"].clone().detach()
 
         return params
 
@@ -170,26 +159,8 @@ class mobster_MV():
                 print("Iteration {}: Loss = {}".format(i, loss))
         
         self.params = self.get_parameters()
-        self.compute_posteriors()
         self.plot()
-    
-    def compute_posteriors(self):
-        """
-        Compute posterior assignment probabilities (i.e., the responsibilities) given the learned parameters.
-        """
-        # lks : K x N
-        lks = self.m_binomial_lk(probs=self.params['probs_bin'], DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
-        # res : K x N
-        res = torch.zeros(self.K, len(self.NV))
-        norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size len(NV)
-        for k in range(len(res)): # iterate over the clusters
-            lks_k = lks[k] # take row k -> array of size len(NV)
-            res[k] = torch.exp(lks_k - norm_fact)
-        self.params["responsib"] = res
-        # For each data point find the cluster assignment (si può creare anche una funzione a parte)
-        self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
 
-        
     def plot(self):
         """
         PLOT I HAVE AT THE MOMENT 
@@ -200,11 +171,46 @@ class mobster_MV():
 
         DP_S1 = self.DP[:,0]
         DP_S2 = self.DP[:,1]
-        plt.xlim([0,1])
-        plt.ylim([0,1])
-        plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"], label = "Original data")
-        plt.scatter(self.params['probs_bin'][:, 0], self.params['probs_bin'][:, 1], c = 'r')
+        plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = 'b', label = "Original data")
+
+        # Plot samples from fitted densities
+        x = np.linspace(0, 150, 1000)
+        n = 130
+
+        f = torch.ones([1000, 2])
+        f[:,0] = dist.Binomial(total_count=n, probs=self.params["probs_bin"][0,0]).sample([1000]).squeeze(-1)
+        f[:,1] = dist.Binomial(total_count=n, probs=self.params["probs_bin"][0,1]).sample([1000]).squeeze(-1)
+        plt.scatter(f[:,0]/n, f[:,1]/n, c = 'r', label = "Samples from fitted beta components")
+
+        for i in range(1, self.K):
+            f = torch.ones([1000, 2])
+            f[:,0] = dist.Binomial(total_count=n, probs=self.params["probs_bin"][i,0]).sample([1000]).squeeze(-1)
+            f[:,1] = dist.Binomial(total_count=n, probs=self.params["probs_bin"][i,1]).sample([1000]).squeeze(-1)
+            plt.scatter(f[:,0]/n, f[:,1]/n, c = 'r')
+
+        plt.title('2D binomial mixture model')
+        plt.xlabel('VAF')
+        plt.ylabel('Frequency')
+        plt.legend()
         plt.show()
         
+    def compute_posteriors(self):
+        """
+        Compute posterior assignment probabilities (i.e., the responsibilities) given the learned parameters.
+        """
+        # lks : K x N
+        lks = self.m_binomial_lk(probs=self.params['probs_bin'], DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
+        # res : K x N
+        res = torch.zeros(self.K, len(self.NV))
+        norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size len(NV)
+        for k in range(len(self.res)): # iterate over the clusters
+            lks_k = lks[k] # take row k -> array of size len(NV)
+            res[k] = torch.exp(lks_k - norm_fact)
+        self.params["responsib"] = res
+        # For each data point find the cluster assignment (si può creare anche una funzione a parte)
+        self.params["cluster_assignments"] = torch.argmax(self.params["cluster_probs"], dim = 0) # vector of dimension
+
     
+
+        
 
