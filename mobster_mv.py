@@ -69,21 +69,21 @@ class mobster_MV():
         c = torch.amax(args, dim=0)
         return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
 
-    def log_beta_par_mix(self, probs, delta, alpha, a_beta, b_beta):
-        delta_pareto = torch.log(delta[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs) # 1x2 tensor
-        delta_beta = torch.log(delta[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs) # 1x2 tensor
+    def log_beta_par_mix(self, probs_beta, probs_pareto, delta, alpha, a_beta, b_beta):
+        delta_pareto = torch.log(delta[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
+        delta_beta = torch.log(delta[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # 1x2 tensor
         
         return self.log_sum_exp(torch.stack((delta_pareto, delta_beta), dim=0)) # creates a 2x2 tensor with torch.stack because log_sum_exp has dim=0
 
-    def m_total_lk(self, probs, probs_pareto, alpha, a_beta, b_beta, DP, weights, delta, K, NV):
-        lk = torch.ones(K, len(NV)) # matrix with K rows and as many columns as the number of data
-        if K == 1:
-            return torch.log(weights) + (dist.Binomial(total_count=DP, probs = probs).log_prob(NV) + self.log_beta_par_mix(probs, delta[0, :, :], alpha, a_beta, b_beta)).sum(axis=1) # simply does log(weights) + log(density)
-        for k in range(K):
+    def m_total_lk(self, probs_beta, probs_pareto, alpha, a_beta, b_beta, weights, delta):
+        lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
+        if self.K == 1:
+            return torch.log(weights) + self.log_beta_par_mix(probs_beta, probs_pareto, delta[0, :, :], alpha, a_beta, b_beta).sum(axis=1) # simply does log(weights) + log(density)
+        for k in range(self.K):
             # print(a_beta)
             # print(b_beta)
             # print(alpha)
-            lk[k, :] = torch.log(weights[k]) + (dist.Binomial(total_count=DP, probs=probs[k, :]).log_prob(NV) + self.log_beta_par_mix(probs[k, :], delta[k, :, :], alpha[k, :], a_beta, b_beta)).sum(axis=1) # sums over the data dimensions (columns)
+            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_beta[k, :], probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta, b_beta).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
 
@@ -102,7 +102,7 @@ class mobster_MV():
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
                 # Prior for the Beta-Pareto weights
-                delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2))) # delta is a K x D x 2 tensor
+                delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2))) # delta is a K x D x 2 torch tensor (K: num layers, D: rows per layer, 2: columns per layer)
                 
                 a_beta = torch.ones(1) # a_beta is a K x D tensor
                 b_beta = torch.ones(1) # b_beta is a K x D tensor
@@ -114,7 +114,7 @@ class mobster_MV():
 
         # Data generation
         with pyro.plate("plate_data", len(NV)):
-            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, DP, weights, delta, K, NV)).sum()) # .sum() sums over the data because we have a log-likelihood  
+            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, weights, delta)).sum()) # .sum() sums over the data because we have a log-likelihood  
 
     def guide(self):
         """
