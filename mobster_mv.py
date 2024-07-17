@@ -154,7 +154,7 @@ class mobster_MV():
     
         alpha_param = pyro.param("alpha_param", torch.ones((K,D)), constraint=constraints.positive) # Use 0.8 as starting value
         # a_beta_param = pyro.param("a_beta_param", torch.ones((K,D))*5, constraint=constraints.greater_than(lower_bound=1.0))
-        phi_beta_param = pyro.param("phi_beta_param", self.kmeans_centers, constraint=constraints.interval(0.2, 1.))
+        phi_beta_param = pyro.param("phi_beta_param", self.kmeans_centers, constraint=constraints.interval(0., 1.))
         k_beta_param = pyro.param("k_beta_param", torch.ones((K,D))*100, constraint=constraints.positive)
 
 
