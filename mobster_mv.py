@@ -54,8 +54,8 @@ class mobster_MV():
 
         # # Clip probabilities in [0, 1]
         # # self.kmeans_centers = torch.clip(centers, 0, 1)
-        # centers[centers <= 0] = 0.01
-        # centers[centers >= 1] = 0.09
+        # centers[centers <= 0] = 0.001
+        # centers[centers >= 1] = 0.999
         self.kmeans_centers = centers
         # print("ckmeans_centers: ", self.kmeans_centers)
 
@@ -123,7 +123,7 @@ class mobster_MV():
                 delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2))) # delta is a K x D x 2 torch tensor (K: num layers, D: rows per layer, 2: columns per layer)
                 
                 # a_beta = pyro.sample("a_beta", dist.Gamma(0.5, 0.5))
-                phi_beta = pyro.sample("phi_beta", dist.Beta(1, 1))
+                phi_beta = pyro.sample("phi_beta", dist.Beta(10., 1.))
                 k_beta = pyro.sample("k_beta", dist.Normal(100, 0.5))
                 a_beta = phi_beta*k_beta
                 b_beta = (1-phi_beta)*k_beta
@@ -150,11 +150,17 @@ class mobster_MV():
         weights_param = pyro.param("weights_param", lambda: dist.Dirichlet(torch.ones(K)).sample(), constraint=constraints.simplex)
         pyro.sample("weights", dist.Delta(weights_param).to_event(1))
 
-        delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(K, D, 2)).sample(), constraint=constraints.simplex)
+        delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
     
         alpha_param = pyro.param("alpha_param", torch.ones((K,D)), constraint=constraints.positive) # Use 0.8 as starting value
         # a_beta_param = pyro.param("a_beta_param", torch.ones((K,D))*5, constraint=constraints.greater_than(lower_bound=1.0))
-        phi_beta_param = pyro.param("phi_beta_param", self.kmeans_centers, constraint=constraints.interval(0., 1.))
+        # phi_beta_param = pyro.param("phi_beta_param", torch.ones((K,D))*0.5, constraint=constraints.interval(0., 1.))
+        low = dist.Pareto(alpha = alpha_param, scale = 0.001).icdf(0.99).detach()
+        low[low >= 1] = 0.8
+        print("low: ", low)
+        # high = torch.ones((K,D)).detach().numpy()
+        high = torch.tensor(1).float()
+        phi_beta_param = pyro.param("phi_beta_param", torch.ones((K,D))*0.5, constraint=constraints.interval(low, high))
         k_beta_param = pyro.param("k_beta_param", torch.ones((K,D))*100, constraint=constraints.positive)
 
 
