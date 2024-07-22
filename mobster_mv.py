@@ -58,7 +58,7 @@ class mobster_MV():
         # centers[centers <= 0] = 0.001
         # centers[centers >= 1] = 0.999
         self.kmeans_centers = centers
-        # print("ckmeans_centers: ", self.kmeans_centers)
+        print("kmeans_centers: ", self.kmeans_centers)
 
     def m_binomial_lk(self, probs, DP, weights, K, NV):
         """
@@ -135,8 +135,9 @@ class mobster_MV():
                  # delta is a K x D x 2 torch tensor (K: num layers, D: rows per layer, 2: columns per layer)
                 delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2)))
 
-                phi_beta = pyro.sample("phi_beta", dist.Beta(3., 2.))
-                k_beta = pyro.sample("k_beta", dist.Normal(50, 0.5))
+                # phi_beta = pyro.sample("phi_beta", dist.Beta(2., 2.)) # 3., 2.
+                phi_beta = pyro.sample("phi_beta", dist.Uniform(0., 1.))
+                k_beta = pyro.sample("k_beta", dist.Normal(100, 0.5))
 
                 a_beta = phi_beta * k_beta
                 b_beta = (1-phi_beta) * k_beta
@@ -145,7 +146,8 @@ class mobster_MV():
                 probs_beta = pyro.sample("probs_beta", dist.Beta(a_beta, b_beta)) # probs_beta is a K x D tensor
                 # print("probs_beta: ", probs_beta)
 
-                alpha = pyro.sample("alpha_pareto", dist.LogNormal(1, 0.5)) # alpha is a K x D tensor
+                # alpha = pyro.sample("alpha_pareto", dist.LogNormal(1, 0.5)) # alpha is a K x D tensor
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(0.7, 0.1)) # alpha is a K x D tensor
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(0.001, alpha, 0.5)) # probs_pareto is a K x D tensor
 
         # Data generation
@@ -168,7 +170,8 @@ class mobster_MV():
 
         alpha_param = pyro.param("alpha_param", lambda: torch.ones((K,D))*2, constraint=constraints.positive)
 
-        phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
+        # phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
+        phi_beta_param = pyro.param("phi_beta_param", lambda: torch.ones((K,D))*0.5, constraint=constraints.interval(0., 1.))
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*100, constraint=constraints.positive)
 
         probs_beta_param = pyro.param("probs_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
