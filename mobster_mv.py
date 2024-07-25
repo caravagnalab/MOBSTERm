@@ -89,18 +89,18 @@ class mobster_MV():
         # relaxed one hot
         # delta -> D x 2
 
-        maskk = torch.zeros_like(delta)
+        # maskk = torch.zeros_like(delta)
 
-        mask_min = delta != torch.max(delta, dim=1, keepdim=True).values
-        mask_max = delta == torch.max(delta, dim=1, keepdim=True).values
-        maskk[mask_min] = 1e-10
-        maskk[mask_max] = 1. - 1e-10
+        # mask_min = delta != torch.max(delta, dim=1, keepdim=True).values
+        # mask_max = delta == torch.max(delta, dim=1, keepdim=True).values
+        # maskk[mask_min] = 1e-10
+        # maskk[mask_max] = 1. - 1e-10
 
-        delta_pareto = torch.log(maskk[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
-        delta_beta = torch.log(maskk[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # 1x2 tensor
+        # delta_pareto = torch.log(maskk[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
+        # delta_beta = torch.log(maskk[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # 1x2 tensor
 
-        # delta_pareto = torch.log(delta[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
-        # delta_beta = torch.log(delta[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # 1x2 tensor
+        delta_pareto = torch.log(delta[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
+        delta_beta = torch.log(delta[:, 1]) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # 1x2 tensor
 
         return self.log_sum_exp(torch.stack((delta_pareto, delta_beta), dim=0)) # creates a 2x2 tensor with torch.stack because log_sum_exp has dim=0
 
@@ -137,7 +137,7 @@ class mobster_MV():
 
                 # phi_beta = pyro.sample("phi_beta", dist.Beta(2., 2.)) # 3., 2.
                 phi_beta = pyro.sample("phi_beta", dist.Uniform(0., 1.))
-                k_beta = pyro.sample("k_beta", dist.Normal(100, 0.5))
+                k_beta = pyro.sample("k_beta", dist.Normal(200, 0.5))
 
                 a_beta = phi_beta * k_beta
                 b_beta = (1-phi_beta) * k_beta
@@ -172,7 +172,7 @@ class mobster_MV():
 
         # phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
         phi_beta_param = pyro.param("phi_beta_param", lambda: torch.ones((K,D))*0.5, constraint=constraints.interval(0., 1.))
-        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*100, constraint=constraints.positive)
+        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*200, constraint=constraints.positive)
 
         probs_beta_param = pyro.param("probs_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
         probs_pareto_param = pyro.param("probs_pareto_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., 1.))
@@ -276,7 +276,7 @@ class mobster_MV():
         DP_S2 = self.DP[:,1]
         plt.xlim([0,1])
         plt.ylim([0,1])
-        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"], label = "Original data")
+        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"])
         legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
 
         probs = self.get_probs()
