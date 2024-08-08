@@ -77,7 +77,8 @@ def plot_marginals(mb):
     kappa_beta = mb.params["k_beta"]
     alpha = mb.params["alpha_pareto"]
     weights = mb.params["weights"].numpy()
- 
+    labels = mb.params['cluster_assignments'].numpy()
+
     # For each dimension, for each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     x = np.linspace(0.001, 1, 1000)
@@ -96,7 +97,13 @@ def plot_marginals(mb):
                 pdf = pareto.pdf(x, alpha[k,d], scale=0.01) * weights[k]
                 axes[d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
         axes[d].legend()
-        axes[d].hist(mb.NV[:,d].numpy()/mb.DP[:,d].numpy(), density=True, bins = 50)
+        data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+        # cmap = plt.get_cmap('viridis', np.unique(labels))
+        for i in np.unique(labels):
+            axes[d].hist(data[labels == i], density=True, bins=30, alpha=0.5)#, color=cmap(i))
+
+        # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
+        # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
         axes[d].set_title(f"Dimension {d+1}")
         axes[d].set_ylim([0,3])
         plt.tight_layout()
