@@ -74,6 +74,32 @@ def beta_binomial_component(phi_beta_x = 0.5, k_beta_x = 0.5, phi_beta_y = 0.5, 
 
     return d2, DP
     
+def only_pareto_binomial_component(alpha_x=2, L_x=0.05, H_x=0.5, alpha_y=2, L_y=0.05, H_y=0.5, n=100, N=1000, seed = 123):
+    """
+    Create pareto-pareto component. 
+    Default:
+        x-axis is a Pareto-Binomial
+        y-axis is a Pareto-Binomial
+    """
+    pyro.set_rng_seed(seed)
+    d1 = torch.ones([N, 2]) # component 1
+    
+    # x-axis component 1
+    for i in range(N):
+        p_p = BoundedPareto(scale=L_x, alpha = alpha_x, upper_limit = H_x).sample().float()
+        d1[i, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
+    # p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
+    # d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample([N]).squeeze(-1)
+
+
+    for i in range(N):
+        p_p = BoundedPareto(scale=L_y, alpha = alpha_y, upper_limit = H_y).sample().float()
+        d1[i, 1] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
+
+    DP = torch.ones([N, 2]) * n
+
+    return d1, DP
+
 
 def pareto_binomial_component2(alpha=2, L=0.05, H=0.5, p=0.5, n=100, N=1000, exchanged = False, seed = 123):
     """
