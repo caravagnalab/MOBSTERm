@@ -74,15 +74,36 @@ class mobster_MV():
         self.kmeans_centers = centers
         print("kmeans_centers: ", self.kmeans_centers)
 
-    # def beta_lk(self, probs_beta, a_beta, b_beta, weights):
-    #     """
-    #     Compute beta-binomial likelihood for a single dimension of a single cluster.
-    #     """
-    #     return torch.log(weights) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # simply does log(weights) + log(density)
+    def beta_lk(self, probs_beta, a_beta, b_beta, weights):
+        """
+        Compute beta-binomial likelihood for a single dimension of a single cluster.
+        """
+        return torch.log(weights) + dist.Beta(a_beta, b_beta).log_prob(probs_beta) + dist.Binomial(total_count=self.DP, probs = probs_beta).log_prob(self.NV) # simply does log(weights) + log(density)
 
 
-    # def pareto_lk(self, probs_pareto, alpha, weights):
-    #     return torch.log(weights) + BoundedPareto(0.01, alpha, 0.55).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV) # simply does log(weights) + log(density)
+    def pareto_lk(self, probs_pareto, alpha, weights):
+        return torch.log(weights) + BoundedPareto(0.01, alpha, 0.55).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV) # simply does log(weights) + log(density)
+
+    def init_delta(self, probs_beta, probs_pareto, phi_beta, k_beta, alpha):
+        a_beta = phi_beta * k_beta
+        b_beta = (1-phi_beta) * k_beta
+        beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers)# + dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
+        pareto_lk = BoundedPareto(0.01, alpha, 0.55).log_prob(self.kmeans_centers) #+ dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
+
+        # kmeans_centers: KxD
+        K = self.K
+        D = self.NV.shape[1]
+        init_delta = torch.zeros((K,D,2))
+        for i in range(K):
+            for j in range(D):
+                if(beta_lk[i,j] > pareto_lk[i,j]):
+                    init_delta[i,j,0] = 0.4 # pareto
+                    init_delta[i,j,1] = 0.6 # beta
+                else:
+                    init_delta[i,j,0] = 0.6 # pareto
+                    init_delta[i,j,1] = 0.4 # beta
+        return init_delta
+
 
 
     def m_binomial_lk(self, probs, DP, weights, K, NV):
@@ -241,8 +262,9 @@ class mobster_MV():
         probs_beta_param = pyro.param("probs_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
         probs_pareto_param = pyro.param("probs_pareto_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
 
-        # init_delta = init_delta(probs_beta_param, probs_pareto_param, phi_beta_param, k_beta_param, alpha_param)
-        delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
+        init_delta = self.init_delta(probs_beta_param, probs_pareto_param, phi_beta_param, k_beta_param, alpha_param)
+        delta_param = pyro.param("delta_param", init_delta, constraint=constraints.simplex)
+        # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
 
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
