@@ -11,6 +11,8 @@ from scipy.stats import binom, beta, pareto
 from sklearn.cluster import KMeans
 from BoundedPareto import BoundedPareto
 
+from collections import defaultdict
+
 """
 Cosa ho cambiato qui:
     - prior over alpha
@@ -311,11 +313,20 @@ class mobster_MV():
         K = self.K
         self.compute_kmeans_centers(self.seed)
         svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
-        self.loss = torch.zeros((num_iter))
-        self.lks = torch.zeros((num_iter))
         
+        svi.step()
+        gradient_norms = defaultdict(list)
+        for name, value in pyro.get_param_store().named_parameters():
+            if name in ["probs_beta_param", "probs_pareto_param", "alpha_param", "delta_param"]:
+                value.register_hook(
+                    lambda g, name=name: gradient_norms[name].append(g.norm().item())
+                )
+        
+        self.losses = []
+        self.lks = []
         for i in range(num_iter):
-            self.loss[i] = svi.step()
+            loss = svi.step()
+            self.losses.append(loss)
 
             # Save likelihood values
             param_store = pyro.get_param_store()
@@ -331,10 +342,11 @@ class mobster_MV():
             # ------------------------Learn alpha------------------------- #
             delta = param_store["delta_param"].clone().detach()
             weights = param_store["weights_param"].clone().detach()
-            self.lks[i] = self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, weights, delta)).sum()
+            lks = self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, weights, delta)).sum()
+            self.lks.append(lks)
             
             if i % 200 == 0:
-                print("Iteration {}: Loss = {}".format(i, self.loss[i]))
+                print("Iteration {}: Loss = {}".format(i, loss))
             # ----------------------Check parameter convergence---------------------#
             """"""
             if i == 0:
@@ -373,9 +385,9 @@ class mobster_MV():
                 plt.show()
             # ----------------------End check parameter convergence---------------------#
 
-
         self.params = self.get_parameters()
-        self.plot_loss_lks(num_iter)
+        self.plot_loss_lks()
+        self.plot_grad_norms(gradient_norms)
         self.compute_posteriors()
         self.plot()
 
@@ -415,13 +427,23 @@ class mobster_MV():
 
 
     
-    def plot_loss_lks(self, num_iter):
+    def plot_loss_lks(self):
         _, ax = plt.subplots(1, 2, figsize=(10, 5))
-        # x = np.linspace(0.001, num_iter, 1000)
-        ax[0].plot(self.loss)
+        ax[0].plot(self.losses)
         ax[0].set_title("Loss")
         ax[1].plot(self.lks)
         ax[1].set_title("Likelihood")
+        plt.show()
+
+    def plot_grad_norms(self, gradient_norms):
+        plt.figure(figsize=(10, 4), dpi=100).set_facecolor("white")
+        for name, grad_norms in gradient_norms.items():
+            plt.plot(grad_norms, label=name)
+        plt.xlabel("iters")
+        plt.ylabel("gradient norm")
+        plt.yscale("log")
+        plt.legend(loc="best")
+        plt.title("Gradient norms during SVI")
         plt.show()
         
     def plot(self):
