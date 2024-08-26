@@ -52,6 +52,7 @@ class mobster_MV():
 
     
     def compute_kmeans_centers(self, seed):
+        # Implement loop to choose the seed which produces a result with the lowest inertia
         kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init="auto").fit((self.NV/self.DP).numpy())
         cluster = kmeans.labels_
         centers = torch.tensor(kmeans.cluster_centers_)
@@ -76,6 +77,8 @@ class mobster_MV():
         self.kmeans_centers = centers
         print("kmeans_centers: ", self.kmeans_centers)
 
+        self.init_delta = self.initialize_delta(self.kmeans_centers, self.k_beta_init, self.alpha_pareto_mean)
+
     def beta_lk(self, probs_beta, a_beta, b_beta, weights):
         """
         Compute beta-binomial likelihood for a single dimension of a single cluster.
@@ -86,12 +89,13 @@ class mobster_MV():
     def pareto_lk(self, probs_pareto, alpha, weights):
         return torch.log(weights) + BoundedPareto(0.01, alpha, 0.55).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV) # simply does log(weights) + log(density)
 
-    def init_delta(self, probs_beta, probs_pareto, phi_beta, k_beta, alpha):
+    def initialize_delta(self, phi_beta, k_beta, alpha):
         a_beta = phi_beta * k_beta
         b_beta = (1-phi_beta) * k_beta
         beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers)# + dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
         pareto_lk = BoundedPareto(0.01, alpha, 0.55).log_prob(self.kmeans_centers) #+ dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
-
+        print("Beta: ", beta_lk)
+        print("Pareto: ", pareto_lk)
         # kmeans_centers: KxD
         K = self.K
         D = self.NV.shape[1]
@@ -99,11 +103,11 @@ class mobster_MV():
         for i in range(K):
             for j in range(D):
                 if(beta_lk[i,j] > pareto_lk[i,j]):
-                    init_delta[i,j,0] = 0.4 # pareto
-                    init_delta[i,j,1] = 0.6 # beta
+                    init_delta[i,j,0] = 0.1 # pareto
+                    init_delta[i,j,1] = 0.9 # beta
                 else:
-                    init_delta[i,j,0] = 0.6 # pareto
-                    init_delta[i,j,1] = 0.4 # beta
+                    init_delta[i,j,0] = 0.9 # pareto
+                    init_delta[i,j,1] = 0.1 # beta
         return init_delta
 
 
@@ -178,10 +182,11 @@ class mobster_MV():
         # k_beta
         self.k_beta_mean = 200
         self.k_beta_std = 0.5
+        self.k_beta_init = 5
 
         # alpha_pareto
         self.alpha_pareto_mean = 2
-        self.alpha_pareto_std = 0.005
+        self.alpha_pareto_std = 0.0005
 
         # Bounded pareto
         self.pareto_L = 0.01
@@ -228,7 +233,12 @@ class mobster_MV():
                 # alpha_mu = pyro.sample("alpha_mu", dist.Uniform(0.5,1.))
                 # alpha = pyro.sample("alpha_pareto", dist.LogNormal(alpha_mu, 0.3)) # alpha is a K x D tensor
                 # ------------------------Learn alpha------------------------- #
-                alpha = pyro.sample("alpha_pareto", dist.Normal(alpha_pareto_mean, alpha_pareto_std)) # alpha is a K x D tensor
+                # alpha = pyro.sample("alpha_pareto", dist.Normal(alpha_pareto_mean, alpha_pareto_std)) # alpha is a K x D tensor
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(0.7, 0.005))
+
+
+                
+                # alpha = pyro.sample("alpha_pareto", dist.Gamma(5., 5.)) # alpha is a K x D tensor
                 # alpha = torch.ones((K,D))*2.                
                 # ------------------------Learn alpha------------------------- #
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(pareto_L, alpha, pareto_H)) # probs_pareto is a K x D tensor
@@ -251,6 +261,7 @@ class mobster_MV():
 
         # ------------------------Learn alpha------------------------- #
         alpha_param = pyro.param("alpha_param", lambda: torch.ones((K,D))*2, constraint=constraints.positive)
+        print("Alpha: ", alpha_param)
         # ------------------------Learn alpha------------------------- #
         
 
@@ -259,13 +270,12 @@ class mobster_MV():
 
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
-        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*200, constraint=constraints.positive)
+        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
 
         probs_beta_param = pyro.param("probs_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
         probs_pareto_param = pyro.param("probs_pareto_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
-
-        init_delta = self.init_delta(probs_beta_param, probs_pareto_param, phi_beta_param, k_beta_param, alpha_param)
-        delta_param = pyro.param("delta_param", init_delta, constraint=constraints.simplex)
+        
+        delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
         # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
 
         with pyro.plate("plate_dims", D):
@@ -380,7 +390,7 @@ class mobster_MV():
                     axes[d].legend()
                     axes[d].hist(self.NV[:,d].numpy()/self.DP[:,d].numpy(), density=True, bins = 50)
                     axes[d].set_title(f"Dimension {d+1}")
-                    axes[d].set_ylim([0,40])
+                    axes[d].set_ylim([0,30])
                     plt.tight_layout()
                 plt.show()
             # ----------------------End check parameter convergence---------------------#

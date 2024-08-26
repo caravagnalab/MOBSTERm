@@ -105,5 +105,6 @@ def plot_marginals(mb):
         # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
         axes[d].set_title(f"Dimension {d+1}")
-        axes[d].set_ylim([0,3])
+        axes[d].set_ylim([0,20])
+        axes[d].set_xlim([0,1])
         plt.tight_layout()
