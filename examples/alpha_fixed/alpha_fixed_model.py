@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import binom, beta, pareto
 from sklearn.cluster import KMeans
+
+parent_dir = "../.."
+# Add the parent directory to sys.path
+import sys
+sys.path.insert(0, parent_dir)
 from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
