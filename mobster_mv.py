@@ -12,6 +12,7 @@ from sklearn.cluster import KMeans
 from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
+from pandas.core.common import flatten
 
 """
 Cosa ho cambiato qui:
@@ -51,9 +52,9 @@ class mobster_MV():
         self.set_prior_parameters()
 
     
-    def compute_kmeans_centers(self, seed):
+    def compute_kmeans_centers(self):
         # Implement loop to choose the seed which produces a result with the lowest inertia
-        kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init="auto").fit((self.NV/self.DP).numpy())
+        kmeans = KMeans(n_clusters=self.K, random_state=self.seed, n_init="auto").fit((self.NV/self.DP).numpy())
         cluster = kmeans.labels_
         centers = torch.tensor(kmeans.cluster_centers_)
 
@@ -77,7 +78,14 @@ class mobster_MV():
         self.kmeans_centers = centers
         print("kmeans_centers: ", self.kmeans_centers)
 
+        
+
+    def cluster_initialization(self):
+        
+        self.compute_kmeans_centers()
         self.init_delta = self.initialize_delta(self.kmeans_centers, self.k_beta_init, self.alpha_pareto_mean)
+
+
 
     def beta_lk(self, probs_beta, a_beta, b_beta, weights):
         """
@@ -180,13 +188,17 @@ class mobster_MV():
         # self.phi_beta_H = 1.
 
         # k_beta
-        self.k_beta_mean = 200
+        self.k_beta_mean = 100
         self.k_beta_std = 0.5
         self.k_beta_init = 5
 
-        # alpha_pareto
+        # alpha_pareto (normal)
         self.alpha_pareto_mean = 2
         self.alpha_pareto_std = 0.0005
+        # alpha_pareto (log-normal)
+        # self.alpha_pareto_mean = 0.7
+        # self.alpha_pareto_std = 0.005
+        self.alpha_pareto_init = 2.
 
         # Bounded pareto
         self.pareto_L = 0.01
@@ -233,8 +245,8 @@ class mobster_MV():
                 # alpha_mu = pyro.sample("alpha_mu", dist.Uniform(0.5,1.))
                 # alpha = pyro.sample("alpha_pareto", dist.LogNormal(alpha_mu, 0.3)) # alpha is a K x D tensor
                 # ------------------------Learn alpha------------------------- #
-                # alpha = pyro.sample("alpha_pareto", dist.Normal(alpha_pareto_mean, alpha_pareto_std)) # alpha is a K x D tensor
-                alpha = pyro.sample("alpha_pareto", dist.LogNormal(0.7, 0.005))
+                alpha = pyro.sample("alpha_pareto", dist.Normal(alpha_pareto_mean, alpha_pareto_std)) # alpha is a K x D tensor
+                # alpha = pyro.sample("alpha_pareto", dist.LogNormal(alpha_pareto_mean, alpha_pareto_std))
 
 
                 
@@ -260,7 +272,7 @@ class mobster_MV():
         pyro.sample("weights", dist.Delta(weights_param).to_event(1))
 
         # ------------------------Learn alpha------------------------- #
-        alpha_param = pyro.param("alpha_param", lambda: torch.ones((K,D))*2, constraint=constraints.positive)
+        alpha_param = pyro.param("alpha_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)
         print("Alpha: ", alpha_param)
         # ------------------------Learn alpha------------------------- #
         
@@ -311,8 +323,30 @@ class mobster_MV():
         params["phi_beta"] = param_store["phi_beta_param"].clone().detach()
         params["k_beta"] = param_store["k_beta_param"].clone().detach()
 
-        return params
+        """
+        Per farlo più automatico:
+        param_names = pyro.get_param_store()
+        params = {nms: pyro.param(nms) for nms in param_names}
+        """
 
+        return params
+    
+    
+    def flatten_params(self, pars):
+        # pars = list(pars.values().detach().tolist())
+        pars = list(flatten([value.detach().tolist() for key, value in pars.items()]))
+        # print("pars: ", pars)
+        return(np.array(pars))
+
+    
+    def stopping_criteria(self, old_par, new_par):#, e=0.01):
+        old = self.flatten_params(old_par)
+        new = self.flatten_params(new_par)
+        diff_mix = np.abs(old - new)# / np.abs(old)
+        # if np.all(diff_mix < e):
+        if np.all(diff_mix < old*0.1):
+            return True
+        return False
 
     def fit(self, num_iter = 2000, lr = 0.001):
         pyro.clear_param_store()
@@ -321,7 +355,7 @@ class mobster_MV():
         np.random.seed(self.seed)
         NV, DP = self.NV, self.DP
         K = self.K
-        self.compute_kmeans_centers(self.seed)
+        self.cluster_initialization()
         svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
         
         svi.step()
@@ -334,26 +368,29 @@ class mobster_MV():
         
         self.losses = []
         self.lks = []
+        i = 0
+        min_iter = 100
+        check_conv = False
+        old_par = self.get_parameters() # Save current values of the parameters in old_params
+
         for i in range(num_iter):
             loss = svi.step()
             self.losses.append(loss)
 
             # Save likelihood values
-            param_store = pyro.get_param_store()
-            phi_beta = param_store["phi_beta_param"].clone().detach()
-            k_beta = param_store["k_beta_param"].clone().detach()
-            a_beta = phi_beta * k_beta
-            b_beta = (1-phi_beta) * k_beta
-            probs_beta = param_store["probs_beta_param"].clone().detach()
-            probs_pareto = param_store["probs_pareto_param"].clone().detach()
-            # ------------------------Learn alpha------------------------- #
-            alpha = param_store["alpha_param"].clone().detach()
-            # alpha = torch.ones((self.K,self.NV.shape[1]))*2.
-            # ------------------------Learn alpha------------------------- #
-            delta = param_store["delta_param"].clone().detach()
-            weights = param_store["weights_param"].clone().detach()
-            lks = self.log_sum_exp(self.m_total_lk(probs_beta, probs_pareto, alpha, a_beta, b_beta, weights, delta)).sum()
+            params = self.get_parameters()
+            a_beta = params["phi_beta"] * params["k_beta"]
+            b_beta = (1-params["phi_beta"]) * params["k_beta"]
+            lks = self.log_sum_exp(self.m_total_lk(params["probs_beta"], params["probs_pareto"], 
+                                                   params["alpha_pareto"], a_beta, b_beta, 
+                                                   params["weights"], params["delta"])).sum()
             self.lks.append(lks)
+
+            new_par = params.copy()
+            check_conv = self.stopping_criteria(old_par, new_par)
+            # If the minimum number of steps and convergence are reached, stop the loop
+            if i > min_iter and check_conv:
+                break
             
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
@@ -362,19 +399,19 @@ class mobster_MV():
             if i == 0:
                 for name, value in pyro.get_param_store().items():
                     print(name, pyro.param(name))
-            alpha = alpha.numpy()
-            weights = weights.numpy()
-            phi_beta = phi_beta.numpy()
-            k_beta = k_beta.numpy()
+            alpha = params["alpha_pareto"].numpy()
+            weights = params["weights"].numpy()
+            phi_beta = params["phi_beta"].numpy()
+            k_beta = params["k_beta"].numpy()
             if i % 400 == 0:
                 if i != 0:
-                    print("probs_beta", param_store["probs_beta_param"].clone().detach().numpy())
+                    print("probs_beta", params["probs_beta"].numpy())
 
                 _, axes = plt.subplots(1, 2, figsize=(10, 5))
                 x = np.linspace(0.001, 1, 1000)
                 for d in range(self.NV.shape[1]):
                     for k in range(self.K):
-                        delta_kd = delta[k, d]
+                        delta_kd = params["delta"][k, d]
                         maxx = torch.argmax(delta_kd)
                         if maxx == 1:
                             # plot beta
