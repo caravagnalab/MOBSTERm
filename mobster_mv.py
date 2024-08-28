@@ -183,14 +183,14 @@ class mobster_MV():
         self.max_vaf = 0.51 # for a 1:1 karyotype
 
         # phi_beta
-        self.phi_beta_L = 0.
+        self.phi_beta_L = 0.05
         self.phi_beta_H = self.max_vaf
         # self.phi_beta_H = 1.
 
         # k_beta
         self.k_beta_mean = 100
         self.k_beta_std = 0.5
-        self.k_beta_init = 5
+        self.k_beta_init = 50
 
         # alpha_pareto (normal)
         self.alpha_pareto_mean = 2
@@ -369,7 +369,7 @@ class mobster_MV():
         self.losses = []
         self.lks = []
         i = 0
-        min_iter = 50
+        min_iter = 80
         check_conv = 0
         old_par = self.get_parameters() # Save current values of the parameters in old_params
 
