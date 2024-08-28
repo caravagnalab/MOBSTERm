@@ -339,14 +339,14 @@ class mobster_MV():
         return(np.array(pars))
 
     
-    def stopping_criteria(self, old_par, new_par):#, e=0.01):
+    def stopping_criteria(self, old_par, new_par, check_conv):#, e=0.01):
         old = self.flatten_params(old_par)
         new = self.flatten_params(new_par)
         diff_mix = np.abs(old - new)# / np.abs(old)
         # if np.all(diff_mix < e):
         if np.all(diff_mix < old*0.1):
-            return True
-        return False
+            return check_conv + 1 
+        return 0
 
     def fit(self, num_iter = 2000, lr = 0.001):
         pyro.clear_param_store()
@@ -369,8 +369,8 @@ class mobster_MV():
         self.losses = []
         self.lks = []
         i = 0
-        min_iter = 100
-        check_conv = False
+        min_iter = 50
+        check_conv = 0
         old_par = self.get_parameters() # Save current values of the parameters in old_params
 
         for i in range(num_iter):
@@ -387,9 +387,10 @@ class mobster_MV():
             self.lks.append(lks)
 
             new_par = params.copy()
-            check_conv = self.stopping_criteria(old_par, new_par)
-            # If the minimum number of steps and convergence are reached, stop the loop
-            if i > min_iter and check_conv:
+            check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+            # print("Check conv: ", check_conv)
+            # If convergence is reached (i.e. changes in parameters are small for 50 iterations), stop the loop
+            if check_conv == min_iter:
                 break
             
             if i % 200 == 0:
@@ -427,7 +428,8 @@ class mobster_MV():
                     axes[d].legend()
                     axes[d].hist(self.NV[:,d].numpy()/self.DP[:,d].numpy(), density=True, bins = 50)
                     axes[d].set_title(f"Dimension {d+1}")
-                    axes[d].set_ylim([0,30])
+                    axes[d].set_ylim([0.,30.])
+                    axes[d].set_xlim([0.,1.])
                     plt.tight_layout()
                 plt.show()
             # ----------------------End check parameter convergence---------------------#
