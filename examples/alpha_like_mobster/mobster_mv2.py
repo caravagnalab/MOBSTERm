@@ -241,7 +241,7 @@ class mobster_MV():
                 alpha_precision = pyro.sample('alpha_precision',
                                           dist.Gamma(concentration=self.alpha_precision_concentration,
                                                       rate=self.alpha_precision_rate))
-                alpha = pyro.sample("alpha",
+                alpha = pyro.sample("alpha_noise",
                                  dist.LogNormal(torch.log(alpha_prior * 2),
                                                 1 / alpha_precision))
                 # ---------------------Alpha----------------------- #
@@ -287,7 +287,7 @@ class mobster_MV():
                 
                 pyro.sample('u', dist.Delta(a_prior))
                 pyro.sample('alpha_precision', dist.Delta(alpha_precision_par))
-                pyro.sample('alpha', dist.Delta(alpha_param))
+                pyro.sample('alpha_noise', dist.Delta(alpha_param))
 
                 pyro.sample("phi_beta", dist.Delta(phi_beta_param))
                 pyro.sample("k_beta", dist.Delta(k_beta_param))
@@ -308,6 +308,7 @@ class mobster_MV():
         params["weights"] = param_store["weights_param"].clone().detach()
         params["delta"] = param_store["delta_param"].clone().detach()
         params["alpha_pareto"] = param_store["alpha_param"].clone().detach()
+        params["tail_mean"] = param_store["tail_mean_param"].clone().detach()
         params["phi_beta"] = param_store["phi_beta_param"].clone().detach()
         params["k_beta"] = param_store["k_beta_param"].clone().detach()
 
@@ -392,7 +393,7 @@ class mobster_MV():
                     axes[d].set_ylim([0,40])
                     plt.tight_layout()
                 plt.show()
-            # ----------------------End check parameter convergence---------------------#
+            # ---------------------- End check parameter convergence ---------------------#
 
         self.params = self.get_parameters()
         self.plot_loss_lks()
