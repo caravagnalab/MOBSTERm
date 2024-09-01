@@ -9,11 +9,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import binom, beta, pareto
 from sklearn.cluster import KMeans
-import sys
-# Set the parent directory
-parent_dir = ".."
-# Add the parent directory to sys.path
-sys.path.insert(0, parent_dir)
+# import sys
+# # Set the parent directory
+# parent_dir = ".."
+# # Add the parent directory to sys.path
+# sys.path.insert(0, parent_dir)
 from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
@@ -261,7 +261,7 @@ class mobster_MV():
         pyro.sample("weights", dist.Delta(weights_param).to_event(1))
 
         alpha_prior_param = pyro.param("alpha_prior_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)
-        alpha_param = pyro.param("alpha_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)        
+        alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)        
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
@@ -288,7 +288,9 @@ class mobster_MV():
         """
         Extract the learned parameters.
         """
+        """
         param_store = pyro.get_param_store()
+        
         params = {}
         params["probs_pareto"] = param_store["probs_pareto_param"].clone().detach()
         params["weights"] = param_store["weights_param"].clone().detach()
@@ -299,11 +301,10 @@ class mobster_MV():
         params["k_beta"] = param_store["k_beta_param"].clone().detach()
 
         """
-        Per farlo più automatico:
+        # Per farlo più automatico:
         param_names = pyro.get_param_store()
         params = {nms: pyro.param(nms) for nms in param_names}
-        """
-
+        
         return params
     
     
@@ -336,7 +337,7 @@ class mobster_MV():
         svi.step()
         gradient_norms = defaultdict(list)
         for name, value in pyro.get_param_store().named_parameters():
-            if name in ["probs_beta_param", "probs_pareto_param", "alpha_param", "delta_param"]:
+            if name in ["probs_pareto_param", "alpha_pareto_param", "delta_param"]:
                 value.register_hook(
                     lambda g, name=name: gradient_norms[name].append(g.norm().item())
                 )
@@ -354,12 +355,12 @@ class mobster_MV():
 
             # Save likelihood values
             params = self.get_parameters()
-            a_beta = params["phi_beta"] * params["k_beta"]
-            b_beta = (1-params["phi_beta"]) * params["k_beta"]
-            lks = self.log_sum_exp(self.m_total_lk(params["probs_pareto"], 
-                                                   params["alpha_pareto"], a_beta, b_beta, 
-                                                   params["weights"], params["delta"])).sum()
-            self.lks.append(lks)
+            a_beta = params["phi_beta_param"] * params["k_beta_param"]
+            b_beta = (1-params["phi_beta_param"]) * params["k_beta_param"]
+            lks = self.log_sum_exp(self.m_total_lk(params["probs_pareto_param"], 
+                                                   params["alpha_pareto_param"], a_beta, b_beta, 
+                                                   params["weights_param"], params["delta_param"])).sum()
+            self.lks.append(lks.detach().numpy())
 
             new_par = params.copy()
             check_conv = self.stopping_criteria(old_par, new_par, check_conv)
@@ -375,20 +376,20 @@ class mobster_MV():
             if i == 0:
                 for name, value in pyro.get_param_store().items():
                     print(name, pyro.param(name))
-            alpha = params["alpha_pareto"].numpy()
-            weights = params["weights"].numpy()
-            phi_beta = params["phi_beta"].numpy()
-            k_beta = params["k_beta"].numpy()
+            alpha = params["alpha_pareto_param"].detach().numpy()
+            weights = params["weights_param"].detach().numpy()
+            phi_beta = params["phi_beta_param"].detach().numpy()
+            k_beta = params["k_beta_param"].detach().numpy()
             if i % 400 == 0:
                 if i != 0:
-                    print("phi_beta", params["phi_beta"].numpy())
-                    print("delta", params["delta"].numpy())
+                    print("phi_beta", params["phi_beta_param"].detach().numpy())
+                    print("delta", params["delta_param"].detach().numpy())
 
                 _, axes = plt.subplots(1, 2, figsize=(10, 5))
                 x = np.linspace(0.001, 1, 1000)
                 for d in range(self.NV.shape[1]):
                     for k in range(self.K):
-                        delta_kd = params["delta"][k, d]
+                        delta_kd = params["delta_param"][k, d]
                         maxx = torch.argmax(delta_kd)
                         if maxx == 1:
                             # plot beta
@@ -402,7 +403,7 @@ class mobster_MV():
                             axes[d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
                         
                     axes[d].legend()
-                    axes[d].hist(self.NV[:,d].numpy()/self.DP[:,d].numpy(), density=True, bins = 50)
+                    axes[d].hist(self.NV[:,d].detach().numpy()/self.DP[:,d].detach().numpy(), density=True, bins = 50)
                     axes[d].set_title(f"Dimension {d+1}")
                     axes[d].set_ylim([0.,30.])
                     axes[d].set_xlim([0.,1.])
@@ -418,9 +419,9 @@ class mobster_MV():
 
 
     def get_probs(self):
-        probs_beta = self.params["phi_beta"]  # K x D
-        probs_pareto = self.params["probs_pareto"]  # K x D
-        delta = self.params["delta"]  # K x D x 2
+        probs_beta = self.params["phi_beta_param"]  # K x D
+        probs_pareto = self.params["probs_pareto_param"]  # K x D
+        delta = self.params["delta_param"]  # K x D x 2
 
         probs = torch.ones(self.K, self.NV.shape[1])
         for k in range(self.K):
@@ -438,7 +439,7 @@ class mobster_MV():
         """
         # lks : K x N
         probs = self.get_probs()
-        lks = self.m_binomial_lk(probs=probs, DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
+        lks = self.m_binomial_lk(probs=probs, DP = self.DP, weights=self.params['weights_param'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
         # lks = self.m_binomial_lk(probs=self.params['probs_beta'], DP = self.DP, weights=self.params['weights'], K = self.K, NV = self.NV) # Compute log-likelihood for each data in each cluster
         # res : K x N
         res = torch.zeros(self.K, len(self.NV))
@@ -487,9 +488,9 @@ class mobster_MV():
         legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
 
         probs = self.get_probs()
-        plt.scatter(self.params['phi_beta'][:, 0], self.params['phi_beta'][:, 1], c = 'g', label="Beta")
-        plt.scatter(self.params['probs_pareto'][:, 0], self.params['probs_pareto'][:, 1], c = 'darkorange')
-        plt.scatter(probs[:, 0], probs[:, 1], c = 'r', marker="x")
+        plt.scatter(self.params['phi_beta_param'][:, 0].detach().numpy(), self.params['phi_beta_param'][:, 1].detach().numpy(), c = 'g', label="Beta")
+        plt.scatter(self.params['probs_pareto_param'][:, 0].detach().numpy(), self.params['probs_pareto_param'][:, 1].detach().numpy(), c = 'darkorange')
+        plt.scatter(probs[:, 0].detach().numpy(), probs[:, 1].detach().numpy(), c = 'r', marker="x")
 
         red_patch = mpatches.Patch(color='r', label='Final probs')
         green_patch = mpatches.Patch(color='g', label='Beta')
