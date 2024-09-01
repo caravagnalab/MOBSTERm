@@ -58,18 +58,18 @@ class mobster_MV():
         centers = torch.tensor(kmeans.cluster_centers_)
 
         # -----------------Gaussian noise------------------#
-        """
+        """"""
         mean = 0
-        std_dev = 0.005
+        std_dev = 0.05
         D = self.NV.shape[1]
-        gaussian_noise = torch.abs(dist.Normal(mean, std_dev).sample([self.K, D]))
+        gaussian_noise = dist.Normal(mean, std_dev).sample([self.K, D])
 
         # Add gaussian noise to found centers
         centers = centers + gaussian_noise
 
         # Clip probabilities in [0, 1]
         # self.kmeans_centers = torch.clip(centers, 0, 1)
-        """
+        
         # -----------------Gaussian noise------------------#
         
         centers[centers <= 0] = 0.001
