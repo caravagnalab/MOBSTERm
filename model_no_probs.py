@@ -195,7 +195,7 @@ class mobster_MV():
     def set_prior_parameters(self):
 
         self.max_vaf = 0.51 # for a 1:1 karyotype
-        self.min_vaf = 0.001
+        self.min_vaf = 0.01
 
         # phi_beta
         self.phi_beta_L = self.min_vaf
@@ -279,8 +279,8 @@ class mobster_MV():
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
 
-                alpha = pyro.sample("alpha_prior", dist.Delta(alpha_prior_param))
-                pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
+                pyro.sample("alpha_prior", dist.Delta(alpha_prior_param))
+                alpha = pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
                 
                 pyro.sample("phi_beta", dist.Delta(phi_beta_param))
                 pyro.sample("k_beta", dist.Delta(k_beta_param))
