@@ -12,7 +12,7 @@ import seaborn as sns
 
 
 def plot_deltas(mb):
-    deltas = mb.params["delta"]
+    deltas = mb.params["delta_param"].detach().numpy()
     fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1)
     fig.tight_layout()
     for k in range(deltas.shape[0]):
@@ -20,8 +20,14 @@ def plot_deltas(mb):
         ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Dimensions")
         ax[k].set_title(f"Cluster {k}")
 
+def plot_responsib(mb):
+    resp = mb.params["responsib"].detach().numpy()
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+    fig.tight_layout()
+    sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
+
 def plot_paretos(mb):
-    alpha_pareto = mb.params["alpha_pareto"]
+    alpha_pareto = mb.params["alpha_pareto_param"].detach().numpy()
     fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1])
     fig.tight_layout()
     x = np.arange(0,0.5,0.001)
@@ -32,8 +38,8 @@ def plot_paretos(mb):
             ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
 
 def plot_betas(mb):
-    phi_beta = mb.params["phi_beta"]
-    kappa_beta = mb.params["k_beta"]
+    phi_beta = mb.params["phi_beta_param"].detach().numpy()
+    kappa_beta = mb.params["k_beta_param"].detach().numpy()
 
     fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1])
     fig.tight_layout()
@@ -45,39 +51,14 @@ def plot_betas(mb):
             pdf = beta.pdf(x, a, b)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Cluster {k} Dimension {d}")
-            
-            
-# def plot_marginals(mb):
-#     with warnings.catch_warnings():
-#         warnings.simplefilter("ignore", category=FutureWarning)
-#         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-#         # sns.color_palette("viridis", mb.K)
-        
-#         # S1 marginal
-#         df1 = pd.DataFrame({'values': mb.NV[:,0].numpy()/mb.DP[:,0].numpy(), 'cluster': mb.params["cluster_assignments"].numpy()})
-#         sns.kdeplot(data=df1, x='values', hue='cluster', fill=True, ax=axes[0])#, palette = palette)
-#         axes[0].set_title('S1 Marginal distribution \n (Kernel density estimation of data, colored by cluster assignment)')
-#         axes[0].set_xlim(0, 1)
-
-#         # S1 marginal
-#         df2 = pd.DataFrame({'values': mb.NV[:,1].numpy()/mb.DP[:,1].numpy(), 'cluster': mb.params["cluster_assignments"].numpy()})
-#         sns.kdeplot(data=df2, x='values', hue='cluster', fill=True, ax=axes[1])#, palette = palette)
-#         axes[1].set_title('S2 Marginal distribution \n (Kernel density estimation of data, colored by cluster assignment)')
-#         axes[1].set_xlim(0, 1)
-
-#         # Adjust layout
-#         plt.tight_layout()
-#         plt.show()
 
 def plot_marginals(mb):
-    # probs_beta = mb.params["probs_beta"]  # K x D
-    # probs_pareto = mb.params["probs_pareto"]  # K x D
-    delta = mb.params["delta"]  # K x D x 2
-    phi_beta = mb.params["phi_beta"]
-    kappa_beta = mb.params["k_beta"]
-    alpha = mb.params["alpha_pareto"]
-    weights = mb.params["weights"].numpy()
-    labels = mb.params['cluster_assignments'].numpy()
+    delta = mb.params["delta_param"]  # K x D x 2
+    phi_beta = mb.params["phi_beta_param"].detach().numpy()
+    kappa_beta = mb.params["k_beta_param"].detach().numpy()
+    alpha = mb.params["alpha_pareto_param"].detach().numpy()
+    weights = mb.params["weights_param"].detach().numpy()
+    labels = mb.params['cluster_assignments'].detach().numpy()
 
     # For each dimension, for each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
@@ -105,6 +86,6 @@ def plot_marginals(mb):
         # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
         axes[d].set_title(f"Dimension {d+1}")
-        axes[d].set_ylim([0,20])
+        axes[d].set_ylim([0,100])
         axes[d].set_xlim([0,1])
         plt.tight_layout()
