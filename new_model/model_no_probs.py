@@ -52,37 +52,53 @@ class mobster_MV():
 
     
     def compute_kmeans_centers(self):
-        # Implement loop to choose the seed which produces a result with the lowest inertia
-        kmeans = KMeans(n_clusters=self.K, random_state=self.seed, n_init="auto").fit((self.NV/self.DP).numpy())
-        cluster = kmeans.labels_
-        centers = torch.tensor(kmeans.cluster_centers_)
 
+        best_inertia = float('inf')
+        best_centers = None
+        best_cluster = None
+        # Implement loop to choose the seed which produces a result with the lowest inertia
+        
+        for seed in range(1, 16):
+            kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init="auto").fit((self.NV/self.DP).numpy())
+            best_cluster = kmeans.labels_.copy()
+            centers = torch.tensor(kmeans.cluster_centers_)
+            # Compute inertia
+            inertia = kmeans.inertia_
+            
+            # Update best results if current inertia is lower
+            if inertia < best_inertia:
+                best_inertia = inertia
+                best_centers = centers.clone()
+        
         # -----------------Gaussian noise------------------#
-        """"""
+        
+        self.kmeans_centers_no_noise = best_centers.clone()
         mean = 0
         std_dev = 0.05
         D = self.NV.shape[1]
         gaussian_noise = dist.Normal(mean, std_dev).sample([self.K, D])
 
         # Add gaussian noise to found centers
-        centers = centers + gaussian_noise
-
-        # Clip probabilities in [0, 1]
-        # self.kmeans_centers = torch.clip(centers, 0, 1)
-        
+        best_centers = best_centers + gaussian_noise        
         # -----------------Gaussian noise------------------#
         
-        centers[centers <= 0] = 0.001
-        centers[centers >= 1] = 0.999
-        self.kmeans_centers = centers
-        print("kmeans_centers: ", self.kmeans_centers)
-
+        # Clip probabilities in [min_vaf, 0.999]
+        best_centers[best_centers <= 0] = self.min_vaf
+        best_centers[best_centers >= 1] = 0.999
+        self.kmeans_centers = best_centers
         """
+        # Print kmeans result
+        sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = best_cluster)
+        plt.xlim([0,1])
+        plt.ylim([0,1])
+        print("kmeans_centers: ", self.kmeans_centers)
+        """
+    
     def initialize_delta(self, phi_beta, k_beta, alpha):
         a_beta = phi_beta * k_beta
         b_beta = (1-phi_beta) * k_beta
-        beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers)# + dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
-        pareto_lk = BoundedPareto(0.01, alpha, 0.55).log_prob(self.kmeans_centers) #+ dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
+        beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers_no_noise)# + dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
+        pareto_lk = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(self.kmeans_centers_no_noise) #+ dist.Binomial(total_count=self.DP, probs = self.kmeans_centers).log_prob(self.NV)
         print("Beta: ", beta_lk)
         print("Pareto: ", pareto_lk)
         # kmeans_centers: KxD
@@ -92,18 +108,18 @@ class mobster_MV():
         for i in range(K):
             for j in range(D):
                 if(beta_lk[i,j] > pareto_lk[i,j]):
-                    init_delta[i,j,0] = 0.1 # pareto
-                    init_delta[i,j,1] = 0.9 # beta
+                    init_delta[i,j,0] = 0.4 # pareto
+                    init_delta[i,j,1] = 0.6 # beta
                 else:
-                    init_delta[i,j,0] = 0.9 # pareto
-                    init_delta[i,j,1] = 0.1 # beta
+                    init_delta[i,j,0] = 0.6 # pareto
+                    init_delta[i,j,1] = 0.4 # beta
         return init_delta
-    """
+   
 
     def cluster_initialization(self):
         
         self.compute_kmeans_centers()
-        # self.init_delta = self.initialize_delta(self.kmeans_centers, self.k_beta_init, self.alpha_pareto_mean)
+        self.init_delta = self.initialize_delta(self.kmeans_centers, self.k_beta_init, self.alpha_pareto_mean)
     
     def log_sum_exp(self, args):
         """
@@ -139,7 +155,7 @@ class mobster_MV():
         return dist.Binomial(total_count=self.DP, probs = probs).log_prob(self.NV) # simply does log(weights) + log(density)
             
     
-    def log_beta_par_mix(self, probs_pareto, delta, alpha, a_beta, b_beta):
+    def log_beta_par_mix(self, probs_pareto, delta, a_beta, b_beta):
         # relaxed one hot
         # delta -> D x 2
 
@@ -166,25 +182,28 @@ class mobster_MV():
 
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
-        if self.K == 1:
-            return torch.log(weights) + self.log_beta_par_mix(probs_pareto, delta[0, :, :], alpha, a_beta, b_beta).sum(axis=1) # simply does log(weights) + log(density)
+        # print(delta)
+        # print(delta.shape)
+        # if self.K == 1:
+        #     return torch.log(weights) + self.log_beta_par_mix(probs_pareto, delta[0, :, :], alpha, a_beta, b_beta).sum(axis=1) # simply does log(weights) + log(density)
         for k in range(self.K):
-            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
+            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_pareto[k, :], delta[k, :, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
 
     def set_prior_parameters(self):
 
         self.max_vaf = 0.51 # for a 1:1 karyotype
+        self.min_vaf = 0.001
 
         # phi_beta
-        self.phi_beta_L = 0.
+        self.phi_beta_L = self.min_vaf
         self.phi_beta_H = self.max_vaf
         # self.phi_beta_H = 1.
 
         # k_beta
         self.k_beta_mean = 200
-        self.k_beta_std = 0.5
+        self.k_beta_std = 40
         self.k_beta_init = 100
 
         # alpha_pareto (normal)
@@ -247,12 +266,12 @@ class mobster_MV():
         alpha_prior_param = pyro.param("alpha_prior_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)
         alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)        
 
-        phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(0., self.max_vaf))
+        phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
 
-        # delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
-        delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
-
+        delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
+        # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
+        # delta_param = pyro.param("delta_param", lambda: torch.tensor([[[0.9, 0.1],[0.9, 0.1]]]), constraint=constraints.simplex)
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
 
@@ -313,9 +332,10 @@ class mobster_MV():
         self.losses = []
         self.lks = []
         i = 0
-        min_iter = 50
+        min_iter = 100
         check_conv = 0
         old_par = self.get_parameters() # Save current values of the parameters in old_params
+        old_par.pop('weights_param')
 
         for i in range(num_iter):
             loss = svi.step()
@@ -332,6 +352,7 @@ class mobster_MV():
             self.lks.append(lks.detach().numpy())
 
             new_par = params.copy()
+            new_par.pop('weights_param')
             check_conv = self.stopping_criteria(old_par, new_par, check_conv)
             # print("Check conv: ", check_conv)
             # If convergence is reached (i.e. changes in parameters are small for 50 iterations), stop the loop
@@ -407,8 +428,12 @@ class mobster_MV():
         return probs
 
     def pareto_lk2(self, alpha):
+        # Doesn't work if K = 1
         LINSPACE = 2000
-        x = torch.linspace(0.01, 0.999, LINSPACE)
+        # print(alpha)
+        # print(alpha.shape)
+        # x = torch.linspace(0.01, 0.999, LINSPACE)
+        x = torch.linspace(self.pareto_L, self.max_vaf, LINSPACE) # sampled "probability" values (possibili valori discreti sul dominio di integrazione)
         y_1 = torch.stack([
             BoundedPareto(self.pareto_L, alpha[0], self.pareto_H).log_prob(x).exp(),  # dim 0
             BoundedPareto(self.pareto_L, alpha[1], self.pareto_H).log_prob(x).exp()   # dim 1
@@ -419,8 +444,16 @@ class mobster_MV():
         ], dim=2)
         ParetoBin = torch.trapz(y_1.reshape([LINSPACE, 1, 2]) * y_2, x=x, dim=0).log()
         return ParetoBin
-        # return dist.Binomial(total_count=self.DP, probs = probs).log_prob(self.NV) # simply does log(weights) + log(density)
-            
+        # LINSPACE = 2000
+        # alpha = mb.params['alpha_pareto_param']
+        # x = torch.linspace(0.01, 0.999, LINSPACE)
+        # y_1_0 = BoundedPareto(0.01, alpha[0], 0.55).log_prob(x).exp() # dim 0
+        # y_1_1 = BoundedPareto(0.01, alpha[1], 0.55).log_prob(x).exp() # dim 1
+        # y_2_0 = dist.Binomial(probs = x.repeat([mb.NV.shape[0],1]).reshape([LINSPACE,-1]), total_count=mb.DP[:,0]).log_prob(mb.NV[:,0]).exp()
+        # y_2_1 = dist.Binomial(probs = x.repeat([mb.NV.shape[0],1]).reshape([LINSPACE,-1]), total_count=mb.DP[:,1]).log_prob(mb.NV[:,1]).exp()
+        # pareto_0 = torch.trapz(y_1_0.reshape([LINSPACE, 1]) * y_2_0, x =  x, dim = 0).log()
+        # pareto_1 = torch.trapz(y_1_1.reshape([LINSPACE, 1]) * y_2_1, x =  x, dim = 0).log()
+        # ParetoBin = torch.stack([pareto_0, pareto_1], dim=1)   
     
     def log_beta_par_mix2(self, delta, alpha, a_beta, b_beta):
         # relaxed one hot
@@ -432,8 +465,8 @@ class mobster_MV():
 
     def m_total_lk2(self, alpha, a_beta, b_beta, weights, delta):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
-        if self.K == 1:
-            return torch.log(weights) + self.log_beta_par_mix2(delta[0, :, :], alpha, a_beta, b_beta).sum(axis=1) # simply does log(weights) + log(density)
+        # if self.K == 1:
+        #     return torch.log(weights) + self.log_beta_par_mix2(delta[0, :, :], alpha, a_beta, b_beta).sum(axis=1) # simply does log(weights) + log(density)
         for k in range(self.K):
             lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix2(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
