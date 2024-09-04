@@ -206,12 +206,12 @@ class mobster_MV():
         self.k_beta_mean = 200
         self.k_beta_std = 15
         self.k_beta_init = 100
-        self.prior_overdispersion = torch.tensor(300.)
-        self.prec_overdispersion = torch.tensor(5.)
+        self.prior_overdispersion = torch.tensor(250.)
+        self.prec_overdispersion = torch.tensor(500.)
 
         # alpha_pareto (normal)
-        self.alpha_pareto_mean = 2
-        self.alpha_pareto_std = 0.005
+        self.alpha_pareto_mean = torch.tensor(2.)
+        self.alpha_pareto_std = torch.tensor(0.005)
         # alpha_pareto (log-normal)
         # self.alpha_pareto_mean = 0.7
         # self.alpha_pareto_std = 0.005
@@ -246,9 +246,9 @@ class mobster_MV():
                 a_beta = phi_beta * k_beta
                 b_beta = (1-phi_beta) * k_beta
 
-                alpha_prior = pyro.sample("alpha_prior", dist.Gamma(2,0.4))
-                alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(2.*alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
-            
+                # alpha_prior = pyro.sample("alpha_prior", dist.Gamma(2,0.4))
+                # alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(2.*alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(self.alpha_pareto_mean, self.alpha_pareto_std))
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
 
         # Data generation
@@ -267,7 +267,7 @@ class mobster_MV():
         weights_param = pyro.param("weights_param", lambda: dist.Dirichlet(torch.ones(K)).sample(), constraint=constraints.simplex)
         pyro.sample("weights", dist.Delta(weights_param).to_event(1))
 
-        alpha_prior_param = pyro.param("alpha_prior_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)
+        # alpha_prior_param = pyro.param("alpha_prior_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)
         alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.positive)        
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
@@ -279,7 +279,7 @@ class mobster_MV():
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
 
-                pyro.sample("alpha_prior", dist.Delta(alpha_prior_param))
+                # pyro.sample("alpha_prior", dist.Delta(alpha_prior_param))
                 alpha = pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
                 
                 pyro.sample("phi_beta", dist.Delta(phi_beta_param))
@@ -377,7 +377,7 @@ class mobster_MV():
             if i % 400 == 0:
                 if i != 0:
                     print("phi_beta", params["phi_beta_param"].detach().numpy())
-                    print("delta", params["delta_param"].detach().numpy())
+                    # print("delta", params["delta_param"].detach().numpy())
 
                 _, axes = plt.subplots(1, 2, figsize=(10, 5))
                 x = np.linspace(0.001, 1, 1000)
