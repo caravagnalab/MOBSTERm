@@ -8,8 +8,8 @@ from torch.distributions import constraints
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import binom, beta, pareto
-import os
-os.environ['OMP_NUM_THREADS'] = '3'
+# import os
+# os.environ['OMP_NUM_THREADS'] = '3'
 from sklearn.cluster import KMeans
 from BoundedPareto import BoundedPareto
 
@@ -194,8 +194,8 @@ class mobster_MV():
 
     def set_prior_parameters(self):
 
-        self.max_vaf = 0.51 # for a 1:1 karyotype
-        self.min_vaf = 0.01
+        self.max_vaf = torch.tensor(0.51) # for a 1:1 karyotype
+        self.min_vaf = torch.tensor(0.01)
 
         # phi_beta
         self.phi_beta_L = self.min_vaf
@@ -203,9 +203,9 @@ class mobster_MV():
         # self.phi_beta_H = 1.
 
         # k_beta
-        self.k_beta_mean = 200
-        self.k_beta_std = 15
-        self.k_beta_init = 100
+        self.k_beta_mean = torch.tensor(200.)
+        self.k_beta_std = torch.tensor(15.)
+        self.k_beta_init = torch.tensor(100.)
         self.prior_overdispersion = torch.tensor(250.)
         self.prec_overdispersion = torch.tensor(500.)
 
@@ -215,10 +215,10 @@ class mobster_MV():
         # alpha_pareto (log-normal)
         # self.alpha_pareto_mean = 0.7
         # self.alpha_pareto_std = 0.005
-        self.alpha_pareto_init = 2.
+        self.alpha_pareto_init = torch.tensor(2.)
 
         # Bounded pareto
-        self.pareto_L = 0.01
+        self.pareto_L = torch.tensor(0.01)
         self.pareto_H = self.max_vaf
 
 
@@ -246,9 +246,9 @@ class mobster_MV():
                 a_beta = phi_beta * k_beta
                 b_beta = (1-phi_beta) * k_beta
 
-                # alpha_prior = pyro.sample("alpha_prior", dist.Gamma(2,0.4))
-                # alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(2.*alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
-                alpha = pyro.sample("alpha_pareto", dist.LogNormal(self.alpha_pareto_mean, self.alpha_pareto_std))
+                # alpha_prior = pyro.sample("alpha_prior", dist.Gamma(20,10))
+                # alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), self.alpha_pareto_std))
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
 
         # Data generation
