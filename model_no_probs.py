@@ -130,6 +130,8 @@ class mobster_MV():
         where: a_k = log(pi_k) + sum^D log(Bin(x_{id} | DP_{id}, p_{dk})) 
         This function returns a N dimensional vector, where each entry corresponds to the log-likelihood of each data point.
         """
+        if len(args.shape) == 1:
+            args = args.unsqueeze(0)
         c = torch.amax(args, dim=0)
         return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
     
