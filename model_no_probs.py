@@ -15,9 +15,10 @@ from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
 from pandas.core.common import flatten
+import copy
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K=1, tail=1, truncated_pareto = True, purity=1, seed=2):
+    def __init__(self, NV = None, DP = None, tail=1, truncated_pareto = True, purity=1, seed=2):
         """
         Parameters:
         
@@ -39,7 +40,7 @@ class mobster_MV():
         self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
         # if(DP is not None):
         self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
-        self.K = K
+        # self.K = K
         self.tail = tail
         self.truncated_pareto = truncated_pareto
         self.purity = purity
@@ -69,7 +70,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         self.kmeans_centers_no_noise = best_centers.clone()
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = self.min_vaf
+        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf)
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= 1] = 0.999
         
         mean = 0
@@ -82,7 +83,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         # Clip probabilities in [min_vaf, 0.999]
-        best_centers[best_centers <= 0] = self.min_vaf
+        best_centers[best_centers <= 0] = torch.min(self.min_vaf)
         best_centers[best_centers >= 1] = 0.999
         self.kmeans_centers = best_centers
         """
@@ -191,6 +192,22 @@ class mobster_MV():
             lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_pareto[k, :], delta[k, :, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
+    
+    def compute_min_vaf(self):
+        """
+        Function to compute the minimum vaf value (different from 0) found in 
+        each dimension
+        """
+        
+        vaf = self.NV/self.DP
+        copy_vaf = torch.clone(vaf)
+        # Replace zeros with a large value that will not be considered as minimum (i.e. 1)
+        masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+        # Find the minimum value for each column excluding zeros
+        min_values, _ = torch.min(masked_tensor, dim=0)
+        min_values = min_values.repeat(self.K, 1)
+        return min_values
 
     def set_prior_parameters(self):
 
@@ -203,22 +220,23 @@ class mobster_MV():
         # self.phi_beta_H = 1.
 
         # k_beta
-        self.k_beta_mean = torch.tensor(200.)
-        self.k_beta_std = torch.tensor(15.)
+        # self.k_beta_mean = torch.tensor(200.)
+        # self.k_beta_std = torch.tensor(15.)
         self.k_beta_init = torch.tensor(100.)
-        self.prior_overdispersion = torch.tensor(250.)
-        self.prec_overdispersion = torch.tensor(500.)
+        self.prior_overdispersion = torch.tensor(100.)
+        self.prec_overdispersion = torch.tensor(100.)
 
         # alpha_pareto (normal)
-        self.alpha_pareto_mean = torch.tensor(2.)
-        self.alpha_pareto_std = torch.tensor(0.005)
+        self.alpha_pareto_mean = torch.tensor(1.)
+        self.alpha_pareto_std = torch.tensor(0.01)
         # alpha_pareto (log-normal)
         # self.alpha_pareto_mean = 0.7
         # self.alpha_pareto_std = 0.005
-        self.alpha_pareto_init = torch.tensor(2.)
+        self.alpha_pareto_init = torch.tensor(1.)
 
         # Bounded pareto
         self.pareto_L = torch.tensor(0.01)
+        # self.pareto_L = self.compute_min_vaf()
         self.pareto_H = self.max_vaf
 
 
@@ -248,6 +266,7 @@ class mobster_MV():
 
                 # alpha_prior = pyro.sample("alpha_prior", dist.Gamma(20,10))
                 # alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
+                # alpha = pyro.sample("alpha_pareto", dist.Gamma(40,20))
                 alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), self.alpha_pareto_std))
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
 
@@ -314,14 +333,40 @@ class mobster_MV():
         if np.all(diff_mix < old*0.1):
             return check_conv + 1 
         return 0
+    
+    # Model selection
+    def compute_BIC(self, params):
+        n_params = calculate_number_of_params(params)
+        n = self.NV.shape[0]
+        lk = self.log_sum_exp(self.compute_final_lk()).sum()
+        return np.log(n) * n_params - 2 * lk
 
-    def fit(self, num_iter = 2000, lr = 0.001):
+    def fit(self, num_iter = 2000, K = 1, lr = 0.001):
+        """
+        Function to run the inference with different values of K
+        """
+        min_bic = torch.tensor(float('inf'))
+        for curr_k in (K-1, K, K+1):
+            if curr_k != 0:
+                print("RUN WITH K = ", curr_k)
+                curr_dict = self.run_inference(num_iter, curr_k, lr)
+                if curr_dict['bic'] <= min_bic:
+                    final_dict = curr_dict.copy()
+                    final_k = curr_k
+                    min_bic = curr_dict['bic']
+        self.params = final_dict['model_parameters'].copy()
+        self.K = final_k
+        print("Selected number of clusters is: ", final_k)
+        self.plot()
+
+
+    def run_inference(self, num_iter = 2000, K = 1, lr = 0.001):
         pyro.clear_param_store()
         pyro.set_rng_seed(self.seed)
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         NV, DP = self.NV, self.DP
-        K = self.K
+        self.K = K
         self.cluster_initialization()
         svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
         
@@ -374,7 +419,8 @@ class mobster_MV():
             weights = params["weights_param"].detach().numpy()
             phi_beta = params["phi_beta_param"].detach().numpy()
             k_beta = params["k_beta_param"].detach().numpy()
-            if i % 400 == 0:
+            # if i % 400 == 0:
+            if i == num_iter-1:
                 if i != 0:
                     print("phi_beta", params["phi_beta_param"].detach().numpy())
                     # print("delta", params["delta_param"].detach().numpy())
@@ -410,6 +456,13 @@ class mobster_MV():
         self.plot_grad_norms(gradient_norms)
         self.compute_posteriors()
         self.plot()
+        bic = self.compute_BIC(self.params)
+        print("bic: ", bic)
+        final_dict = {
+        "model_parameters" : self.params,
+        "bic": bic
+        }
+        return final_dict
 
 
     def get_probs(self):
@@ -476,7 +529,10 @@ class mobster_MV():
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
     
-    def compute_posteriors(self):
+    def compute_final_lk(self):
+        """
+        Compute likelihood with learnt parameters
+        """
         alpha = self.params["alpha_pareto_param"]
         delta = self.params["delta_param"]  # K x D x 2
         phi_beta = self.params["phi_beta_param"]
@@ -486,6 +542,11 @@ class mobster_MV():
         weights = self.params["weights_param"]
         
         lks = self.m_total_lk2(alpha, a_beta, b_beta, weights, delta)
+        return lks
+
+
+    def compute_posteriors(self):
+        lks = self.compute_final_lk()
         res = torch.zeros(self.K, len(self.NV))
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size len(NV)
         for k in range(len(res)): # iterate over the clusters
@@ -516,7 +577,7 @@ class mobster_MV():
         
     def plot(self):
         """
-        PLOT I HAVE AT THE MOMENT 
+        PLOT I HAVE AT THE MOMENT
         Plot the results.
         """
         NV_S1 = self.NV[:,0]
@@ -538,12 +599,15 @@ class mobster_MV():
         green_patch = mpatches.Patch(color='g', label='Beta')
         blue_patch = mpatches.Patch(color='darkorange', label='Pareto')
 
-        plt.title("Final inference")
+        plt.title(f"Final inference with K = {self.K}")
         plt.legend(handles=[red_patch, green_patch, blue_patch])
         plt.gca().add_artist(legend1)
         plt.show()
         
-        
-    
-
+def calculate_number_of_params(params):
+    total_params = 0
+    for key, param in params.items():
+        param_size = np.prod(param.shape)  # Calculate the total number of elements
+        total_params += param_size
+    return total_params
     

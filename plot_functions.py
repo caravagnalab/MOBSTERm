@@ -35,7 +35,8 @@ def plot_paretos(mb):
         for d in range(alpha_pareto.shape[1]):
             pdf = pareto.pdf(x, alpha_pareto[k,d], scale=0.001)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
-            ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
+            ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
+            # ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
 
 def plot_betas(mb):
     phi_beta = mb.params["phi_beta_param"].detach().numpy()
