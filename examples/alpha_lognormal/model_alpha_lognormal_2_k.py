@@ -255,7 +255,7 @@ class mobster_MV():
                 # alpha_prior = pyro.sample("alpha_prior", dist.Gamma(2,0.4))
                 # alpha = pyro.sample("alpha_pareto", dist.Normal(torch.log(2.*alpha_prior), self.alpha_pareto_std)) # alpha is a K x D tensor
                 # alpha = pyro.sample("alpha_pareto", dist.Gamma(40,20))
-                alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), 1/self.prec_overdispersion)) # alpha is a K x D tensor
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), self.alpha_pareto_std)) # alpha is a K x D tensor
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
 
         # Data generation
