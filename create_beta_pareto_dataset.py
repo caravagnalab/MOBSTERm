@@ -18,12 +18,10 @@ def pareto_binomial_component(alpha=2, L=0.05, H=0.5, phi_beta = 0.5, k_beta = 0
     """
     pyro.set_rng_seed(seed)
     d1 = torch.ones([N, 2]) # component 1
-    probs_pareto = []
 
     # x-axis component 1
     for i in range(N):
         p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
-        probs_pareto.append(p_p)
         d1[i, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
     # p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
     # d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample([N]).squeeze(-1)
@@ -41,7 +39,7 @@ def pareto_binomial_component(alpha=2, L=0.05, H=0.5, phi_beta = 0.5, k_beta = 0
         indices = torch.tensor([1,0])
         d1 = d1[:, indices]
 
-    return d1, DP, probs_pareto
+    return d1, DP
 
 
 def beta_binomial_component(phi_beta_x = 0.5, k_beta_x = 0.5, phi_beta_y = 0.5, k_beta_y= 0.5, n=100, N=1000, seed=123):
