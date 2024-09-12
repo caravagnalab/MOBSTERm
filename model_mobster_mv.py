@@ -214,7 +214,7 @@ class mobster_MV():
         # k_beta
         self.k_beta_init = torch.tensor(100.)
         self.prior_overdispersion = torch.tensor(100.)
-        self.prec_overdispersion = torch.tensor(300.)
+        self.prec_overdispersion = torch.tensor(200.)
 
         # alpha_pareto (normal)
         self.alpha_pareto_mean = torch.tensor(1.)
