@@ -213,7 +213,7 @@ class mobster_MV():
 
     def set_prior_parameters(self):
 
-        self.max_vaf = torch.tensor(0.51) # for a 1:1 karyotype
+        self.max_vaf = torch.tensor(0.55) # for a 1:1 karyotype
         self.min_vaf = torch.tensor(0.01)
 
         # phi_beta
