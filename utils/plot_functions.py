@@ -86,7 +86,44 @@ def plot_marginals(mb):
 
         # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
-        axes[d].set_title(f"Dimension {d+1}")
+        axes[d].set_title(f"Sample {d+1}")
         axes[d].set_ylim([0,100])
         axes[d].set_xlim([0,1])
         plt.tight_layout()
+
+
+def plot_marginals2(mb):
+    delta = mb.params["delta_param"]  # K x D x 2
+    phi_beta = mb.params["phi_beta_param"].detach().numpy()
+    kappa_beta = mb.params["k_beta_param"].detach().numpy()
+    alpha = mb.params["alpha_pareto_param"].detach().numpy()
+    weights = mb.params["weights_param"].detach().numpy()
+    labels = mb.params['cluster_assignments'].detach().numpy()
+
+    # For each sample I want to plot all the clusters separately.
+    # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
+    # For each cluster, we want to plot the histogram of the data assigned to that cluster
+    fig, axes = plt.subplots(mb.NV.shape[1], mb.K, figsize=(15, 6))
+    x = np.linspace(0.001, 1, 1000)
+    for d in range(mb.NV.shape[1]):
+        for k in range(mb.K):
+            delta_kd = delta[k, d]
+            maxx = torch.argmax(delta_kd)
+            if maxx == 1:
+                # plot beta
+                a = phi_beta[k,d] * kappa_beta[k,d]
+                b = (1-phi_beta[k,d]) * kappa_beta[k,d]
+                pdf = beta.pdf(x, a, b)# * weights[k]
+                axes[d,k].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+            else:
+                #plot pareto
+                pdf = pareto.pdf(x, alpha[k,d], scale=mb.pareto_L) #* weights[k]
+                axes[d,k].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
+            # axes[d, k].legend()
+            data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+            # for i in np.unique(labels):
+            axes[d,k].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))
+            axes[d,k].set_title(f"Sample {d+1} - Cluster {k}")
+            # axes[d,k].set_ylim([0,100])
+            axes[d,k].set_xlim([0,1])
+            plt.tight_layout()
