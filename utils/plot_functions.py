@@ -72,11 +72,11 @@ def plot_marginals(mb):
                 # plot beta
                 a = phi_beta[k,d] * kappa_beta[k,d]
                 b = (1-phi_beta[k,d]) * kappa_beta[k,d]
-                pdf = beta.pdf(x, a, b) * weights[k]
+                pdf = beta.pdf(x, a, b)# * weights[k]
                 axes[d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
             else:
                 #plot pareto
-                pdf = pareto.pdf(x, alpha[k,d], scale=0.01) * weights[k]
+                pdf = pareto.pdf(x, alpha[k,d], scale=0.01)# * weights[k]
                 axes[d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
         axes[d].legend()
         data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
@@ -87,7 +87,7 @@ def plot_marginals(mb):
         # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
         axes[d].set_title(f"Sample {d+1}")
-        axes[d].set_ylim([0,100])
+        # axes[d].set_ylim([0,100])
         axes[d].set_xlim([0,1])
         plt.tight_layout()
 
@@ -115,11 +115,12 @@ def plot_marginals2(mb):
                 b = (1-phi_beta[k,d]) * kappa_beta[k,d]
                 pdf = beta.pdf(x, a, b)# * weights[k]
                 axes[d,k].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+                axes[d, k].legend()
             else:
                 #plot pareto
                 pdf = pareto.pdf(x, alpha[k,d], scale=mb.pareto_L) #* weights[k]
                 axes[d,k].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
-            # axes[d, k].legend()
+                axes[d, k].legend()
             data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
             # for i in np.unique(labels):
             axes[d,k].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))

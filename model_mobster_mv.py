@@ -8,6 +8,7 @@ from torch.distributions import constraints
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import beta, pareto
+from scipy.integrate import simpson
 from sklearn.cluster import KMeans
 from utils.BoundedPareto import BoundedPareto
 
@@ -156,7 +157,7 @@ class mobster_MV():
         return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
        
     
-    def log_beta_par_mix(self, probs_pareto, delta, a_beta, b_beta):
+    def log_beta_par_mix(self, probs_pareto, delta, alpha, a_beta, b_beta):
         # relaxed one hot
         # delta -> D x 2
 
@@ -182,7 +183,7 @@ class mobster_MV():
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         for k in range(self.K):
-            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_pareto[k, :], delta[k, :, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
+            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix(probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
                                                                                                                     # put on each column of lk a different data; rows are the clusters
         return lk
     
@@ -213,13 +214,12 @@ class mobster_MV():
 
         # k_beta
         self.k_beta_init = torch.tensor(100.)
-        self.prior_overdispersion = torch.tensor(100.)
-        self.prec_overdispersion = torch.tensor(200.)
+        self.k_beta_mean = torch.tensor(100.)
+        self.k_beta_std = torch.tensor(0.001)
 
-        # alpha_pareto (normal)
+        # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.)
-        self.alpha_pareto_std = torch.tensor(0.01)
-        # alpha_pareto (log-normal)
+        self.alpha_pareto_std = torch.tensor(0.005)
         self.alpha_pareto_init = torch.tensor(1.)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
@@ -247,7 +247,7 @@ class mobster_MV():
                 delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2)))
 
                 phi_beta = pyro.sample("phi_beta", dist.Uniform(self.phi_beta_L, self.phi_beta_H)) # 0.5 because we are considering a 1:1 karyotype
-                k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.prior_overdispersion), 1/self.prec_overdispersion))
+                k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.k_beta_mean), self.k_beta_std))
                 
                 a_beta = phi_beta * k_beta
                 b_beta = (1-phi_beta) * k_beta
@@ -447,7 +447,7 @@ class mobster_MV():
         return probs
 
     def pareto_lk(self, alpha):
-        LINSPACE = 2000
+        LINSPACE = 8000
         x = torch.linspace(self.pareto_L, self.max_vaf, LINSPACE) # sampled "probability" values (possibili valori discreti sul dominio di integrazione)
         y_1 = torch.stack([
             BoundedPareto(self.pareto_L, alpha[0], self.pareto_H).log_prob(x).exp(),  # dim 0
@@ -457,6 +457,8 @@ class mobster_MV():
             dist.Binomial(probs=x.repeat([self.NV.shape[0], 1]).reshape([LINSPACE, -1]), total_count=self.DP[:, 0]).log_prob(self.NV[:, 0]).exp(),
             dist.Binomial(probs=x.repeat([self.NV.shape[0], 1]).reshape([LINSPACE, -1]), total_count=self.DP[:, 1]).log_prob(self.NV[:, 1]).exp()
         ], dim=2)
+        # pareto = simpson((y_1.reshape([LINSPACE, 1,2]) * y_2).numpy(), x=x.numpy(), axis=0)
+        # ParetoBin = torch.tensor(pareto).log()
         ParetoBin = torch.trapz(y_1.reshape([LINSPACE, 1, 2]) * y_2, x=x, dim=0).log()
         return ParetoBin
     
@@ -494,14 +496,14 @@ class mobster_MV():
         b_beta = (1-phi_beta) * k_beta
         weights = self.params["weights_param"]
         
-        lks = self.m_total_lk2(alpha, a_beta, b_beta, weights, delta)
+        lks = self.m_total_lk2(alpha, a_beta, b_beta, weights, delta) # K x N
         return lks
 
 
     def compute_posteriors(self):
-        lks = self.compute_final_lk()
-        res = torch.zeros(self.K, len(self.NV))
-        norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size len(NV)
+        lks = self.compute_final_lk() # K x N
+        res = torch.zeros(self.K, len(self.NV)) # K x N
+        norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
         for k in range(len(res)): # iterate over the clusters
             lks_k = lks[k] # take row k -> array of size len(NV)
             res[k] = torch.exp(lks_k - norm_fact)
