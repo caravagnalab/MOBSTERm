@@ -38,7 +38,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
     print("Selected number of clusters is: ", final_k)
     final_mb = mb_list[final_index]
     final_mb.plot()
-    return final_mb
+    return final_mb, mb_list
 
 class mobster_MV():
     def __init__(self, NV = None, DP = None, K = 1, tail=1, truncated_pareto = True, purity=1, seed=2):
@@ -466,6 +466,19 @@ class mobster_MV():
         """
         Compute beta-binomial likelihood for a single dimension of a single cluster.
         """
+        # LINSPACE = 8000
+        # x = torch.linspace(self.min_vaf, self.max_vaf, LINSPACE) # sampled "probability" values (possibili valori discreti sul dominio di integrazione)
+        # y_1 = torch.stack([
+        #     dist.Beta(a_beta[0], b_beta[0]).log_prob(x).exp(),  # dim 0
+        #     dist.Beta(a_beta[1], b_beta[1]).log_prob(x).exp()   # dim 1
+        # ], dim=1)
+        # y_2 = torch.stack([
+        #     dist.Binomial(probs=x.repeat([self.NV.shape[0], 1]).reshape([LINSPACE, -1]), total_count=self.DP[:, 0]).log_prob(self.NV[:, 0]).exp(),
+        #     dist.Binomial(probs=x.repeat([self.NV.shape[0], 1]).reshape([LINSPACE, -1]), total_count=self.DP[:, 1]).log_prob(self.NV[:, 1]).exp()
+        # ], dim=2)
+        # # pareto = simpson((y_1.reshape([LINSPACE, 1,2]) * y_2).numpy(), x=x.numpy(), axis=0)
+        # # ParetoBin = torch.tensor(pareto).log()
+        # return torch.trapz(y_1.reshape([LINSPACE, 1, 2]) * y_2, x=x, dim=0).log()
         return dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # simply does log(weights) + log(density)
 
     
@@ -548,12 +561,12 @@ class mobster_MV():
         probs = self.get_probs()
         plt.scatter(probs[:, 0].detach().numpy(), probs[:, 1].detach().numpy(), c = 'r', marker="x")
 
-        red_patch = mpatches.Patch(color='r', label='Final probs')
-        green_patch = mpatches.Patch(color='g', label='Beta')
-        blue_patch = mpatches.Patch(color='darkorange', label='Pareto')
+        # red_patch = mpatches.Patch(color='r', label='Final probs')
+        # green_patch = mpatches.Patch(color='g', label='Beta')
+        # blue_patch = mpatches.Patch(color='darkorange', label='Pareto')
 
         plt.title(f"Final inference with K = {self.K}")
-        plt.legend(handles=[red_patch, green_patch, blue_patch])
+        # plt.legend(handles=[red_patch, green_patch, blue_patch])
         plt.gca().add_artist(legend1)
         plt.show()
         
