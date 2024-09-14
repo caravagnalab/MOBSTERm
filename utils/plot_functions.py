@@ -14,11 +14,16 @@ import seaborn as sns
 def plot_deltas(mb):
     deltas = mb.params["delta_param"].detach().numpy()
     fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1)
-    fig.tight_layout()
+    fig.tight_layout() 
     for k in range(deltas.shape[0]):
         sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap="crest")
-        ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Dimensions")
-        ax[k].set_title(f"Cluster {k}")
+        # ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Sample")
+        # ax[k].set(xlabel="Distributions", ylabel="Sample")
+        ax[k].set(ylabel="Sample")
+        ax[k].set_yticklabels([1, 2])
+        ax[k].set_xticklabels(["Pareto", "Beta"])
+        ax[k].set(xlabel="Distributions")
+        ax[k].set_title(f"Cluster {k}", fontsize=12)
 
 def plot_responsib(mb):
     resp = mb.params["responsib"].detach().numpy()
@@ -35,7 +40,7 @@ def plot_paretos(mb):
         for d in range(alpha_pareto.shape[1]):
             pdf = pareto.pdf(x, alpha_pareto[k,d], scale=0.001)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
-            ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
+            ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
             # ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
 
 def plot_betas(mb):
@@ -51,7 +56,7 @@ def plot_betas(mb):
             b = (1-phi_beta[k,d])*kappa_beta[k,d]
             pdf = beta.pdf(x, a, b)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
-            ax[k,d].set_title(f"Cluster {k} Dimension {d}")
+            ax[k,d].set_title(f"Sample {d+1} Cluster {k} - phi {round(float(phi_beta[k,d]), ndigits=2)}, kappa {round(float(kappa_beta[k,d]), ndigits=2)}", fontsize=10)
 
 def plot_marginals(mb):
     delta = mb.params["delta_param"]  # K x D x 2
