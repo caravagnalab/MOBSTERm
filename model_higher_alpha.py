@@ -72,6 +72,13 @@ class mobster_MV():
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         self.set_prior_parameters()
+        print("NV = 0 before:", torch.sum(self.NV == 0))
+        # self.zero_NV_idx = (self.NV/self.DP < 0.01)
+        # self.zero_NV_idx = (self.NV == 0.)
+        self.NV[self.zero_NV_idx] = torch.where(torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype) < 1, 
+                                           torch.tensor(1, dtype=NV.dtype), torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype))
+        self.NV[self.zero_NV_idx] = torch.tensor(1, dtype=NV.dtype)
+        print("NV = 0 after:", torch.sum(self.NV == 0))
 
     
     def compute_kmeans_centers(self):
@@ -81,7 +88,7 @@ class mobster_MV():
         # Implement loop to choose the seed which produces a result with the lowest inertia
         
         for seed in range(1, 16):
-            kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init="auto").fit((self.NV/self.DP).numpy())
+            kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init=2).fit((self.NV/self.DP).numpy())
             best_cluster = kmeans.labels_.copy()
             centers = torch.tensor(kmeans.cluster_centers_)
             # Compute inertia (the lower the better)
@@ -95,11 +102,11 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         self.kmeans_centers_no_noise = best_centers.clone()
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf)
+        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.phi_beta_L)
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= 1] = 0.999
         
         mean = 0
-        std_dev = 0.05
+        std_dev = 0.005
         D = self.NV.shape[1]
         gaussian_noise = dist.Normal(mean, std_dev).sample([self.K, D])
 
@@ -108,7 +115,8 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         # Clip probabilities in [min_vaf, 0.999]
-        best_centers[best_centers <= 0] = torch.min(self.min_vaf)
+        # best_centers[best_centers <= 0] = torch.min(self.min_vaf)
+        best_centers[best_centers <= 0] = torch.min(self.phi_beta_L)
         best_centers[best_centers >= 1] = 0.999
         self.kmeans_centers = best_centers
         """
@@ -174,7 +182,7 @@ class mobster_MV():
         maskk[mask_min] = 1e-10
         maskk[mask_max] = 1. - 1e-10
         
-        delta_pareto = torch.log(maskk[:, 0]) + BoundedPareto(0.001, alpha, 1).log_prob(probs_pareto) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # 1x2 tensor
+        delta_pareto = torch.log(maskk[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)
         delta_beta = torch.log(maskk[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # 1x2 tensor
         """
         # ---------------------Relaxed one hot------------------------------ #
@@ -213,12 +221,13 @@ class mobster_MV():
         self.min_vaf = torch.tensor(0.01)
 
         # phi_beta
-        self.phi_beta_L = self.min_vaf
+        # self.phi_beta_L = self.min_vaf
+        self.phi_beta_L = torch.tensor(0.1)
         self.phi_beta_H = self.max_vaf
 
         # k_beta
-        self.k_beta_init = torch.tensor(100.)
-        self.k_beta_mean = torch.tensor(100.)
+        self.k_beta_mean = torch.tensor(200.)
+        self.k_beta_init = torch.tensor(200.)
         self.k_beta_std = torch.tensor(0.001)
 
         # alpha_pareto
@@ -373,8 +382,8 @@ class mobster_MV():
             check_conv = self.stopping_criteria(old_par, new_par, check_conv)
             
             # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
-            if check_conv == min_iter:
-                break
+            # if check_conv == min_iter:
+            #     break
             
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
@@ -500,8 +509,12 @@ class mobster_MV():
     def m_total_lk2(self, alpha, a_beta, b_beta, weights, delta):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         for k in range(self.K):
-            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix2(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
-                                                                                                                    # put on each column of lk a different data; rows are the clusters
+            # print("SHAPE", self.log_beta_par_mix2(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).shape)
+            # beta_pareto = self.log_beta_par_mix2(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]) # N x D
+            # beta_pareto[self.zero_NV_idx] = torch.tensor(0, dtype=beta_pareto.dtype) # put to 0 the contributions of private mutations
+            # lk[k, :] = torch.log(weights[k]) + beta_pareto.sum(axis=1) # sums over the data dimensions (columns)
+                                                                    # put on each column of lk a different data; rows are the clusters
+            lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix2(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1)
         return lk
     
     def compute_final_lk(self):
@@ -519,16 +532,17 @@ class mobster_MV():
         lks = self.m_total_lk2(alpha, a_beta, b_beta, weights, delta) # K x N
         return lks
 
-
     def compute_posteriors(self):
+        # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
         lks = self.compute_final_lk() # K x N
         res = torch.zeros(self.K, len(self.NV)) # K x N
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
         for k in range(len(res)): # iterate over the clusters
             lks_k = lks[k] # take row k -> array of size len(NV)
             res[k] = torch.exp(lks_k - norm_fact)
-        self.params["responsib"] = res
+        self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
+        self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
         return lks
 
     

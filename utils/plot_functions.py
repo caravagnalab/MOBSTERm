@@ -27,7 +27,9 @@ def plot_deltas(mb):
         ax[k].set(ylabel="Sample")
         ax[k].set_yticklabels([1, 2])
         ax[k].set_xticklabels(["Pareto", "Beta"])
-        ax[k].set(xlabel="Distributions")
+        ax[k].set(xlabel=" ")
+        if k == (deltas.shape[0] -1):
+            ax[k].set(xlabel="Distributions")
         ax[k].set_title(f"Cluster {k}", fontsize=12)
 
 def plot_responsib(mb):
@@ -72,6 +74,49 @@ def plot_betas(mb):
 
 
 def plot_marginals(mb):
+    delta = mb.params["delta_param"]  # K x D x 2
+    phi_beta = mb.params["phi_beta_param"].detach().numpy()
+    kappa_beta = mb.params["k_beta_param"].detach().numpy()
+    alpha = mb.params["alpha_pareto_param"].detach().numpy()
+    weights = mb.params["weights_param"].detach().numpy()
+    labels = mb.params['cluster_assignments'].detach().numpy()
+
+    # For each sample I want to plot all the clusters separately.
+    # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
+    # For each cluster, we want to plot the histogram of the data assigned to that cluster
+    if mb.K == 1:
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(10, 4))
+    else:
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(10, mb.K*3))
+    if mb.K == 1:
+        axes = ax = np.array([axes])  # add an extra dimension to make it 2D
+    x = np.linspace(0.001, 1, 1000)
+    for k in range(mb.K):
+        for d in range(mb.NV.shape[1]):
+            delta_kd = delta[k, d]
+            maxx = torch.argmax(delta_kd)
+            if maxx == 1:
+                # plot beta
+                a = phi_beta[k,d] * kappa_beta[k,d]
+                b = (1-phi_beta[k,d]) * kappa_beta[k,d]
+                pdf = beta.pdf(x, a, b)# * weights[k]
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+                axes[k,d].legend()
+            else:
+                #plot pareto
+                pdf = pareto.pdf(x, alpha[k,d], scale=mb.pareto_L) #* weights[k]
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
+                axes[k,d].legend()
+            data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+            # for i in np.unique(labels):
+            axes[k,d].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))
+            axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
+            # axes[d,k].set_ylim([0,100])
+            axes[k,d].set_xlim([0,1])
+            plt.tight_layout()
+
+
+def plot_marginals2(mb):
     delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"].detach().numpy()
     kappa_beta = mb.params["k_beta_param"].detach().numpy()
