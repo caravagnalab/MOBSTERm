@@ -74,7 +74,7 @@ class mobster_MV():
         self.set_prior_parameters()
         print("NV = 0 before:", torch.sum(self.NV == 0))
         # self.zero_NV_idx = (self.NV/self.DP < 0.01)
-        # self.zero_NV_idx = (self.NV == 0.)
+        self.zero_NV_idx = (self.NV == 0.)
         self.NV[self.zero_NV_idx] = torch.where(torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype) < 1, 
                                            torch.tensor(1, dtype=NV.dtype), torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype))
         self.NV[self.zero_NV_idx] = torch.tensor(1, dtype=NV.dtype)
