@@ -15,20 +15,21 @@ def plot_deltas(mb):
     deltas = mb.params["delta_param"].detach().numpy()
     if deltas.shape[0] == 1:
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, 1.5))  # Custom size for 1 plot
-    else:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1)
-    if deltas.shape[0] == 1:
         ax = [ax]  # add an extra dimension to make it 2D
+    else:
+        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1)        
     fig.tight_layout() 
     for k in range(deltas.shape[0]):
         sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap="crest")
         # ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Sample")
         # ax[k].set(xlabel="Distributions", ylabel="Sample")
-        ax[k].set(ylabel="Sample")
-        ax[k].set_yticklabels([1, 2])
+        # ax[k].set_yticklabels([1, 2])
+        ax[k].set_yticklabels([1, 2])  # Set the desired labels
+    
         ax[k].set_xticklabels(["Pareto", "Beta"])
         ax[k].set(xlabel=" ")
-        if k == (deltas.shape[0] -1):
+        ax[k].set(ylabel="Sample")
+        if k == (deltas.shape[0] - 1):
             ax[k].set(xlabel="Distributions")
         ax[k].set_title(f"Cluster {k}", fontsize=12)
 
