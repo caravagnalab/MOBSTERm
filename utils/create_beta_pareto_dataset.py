@@ -20,20 +20,14 @@ def pareto_binomial_component(alpha=2, L=0.05, H=0.5, phi_beta = 0.5, k_beta = 0
     d1 = torch.ones([N, 2]) # component 1
 
     # x-axis component 1
-    for i in range(N):
-        p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
-        d1[i, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
-    # p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
-    # d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample([N]).squeeze(-1)
+    p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample([N]).float()
+    d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample()#.squeeze(-1)
 
     a = phi_beta*k_beta
     b = (1-phi_beta)*k_beta
-    for i in range(N):
-        p_p = dist.Beta(a, b).sample().float()
-        d1[i, 1] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
-
-    # p = dist.Beta(a, b).sample()
-    # d1[:, 1] = dist.Binomial(total_count=n, probs=p).sample([N]).squeeze(-1)
+    p_p = dist.Beta(a, b).sample([N]).float()
+    d1[:, 1] = dist.Binomial(total_count=n, probs=p_p).sample()#.squeeze(-1)
+    
     DP = torch.ones([N, 2]) * n
     if exchanged == True:
         indices = torch.tensor([1,0])
@@ -55,11 +49,11 @@ def beta_binomial_component(phi_beta_x = 0.5, k_beta_x = 0.5, phi_beta_y = 0.5, 
     b_x = (1-phi_beta_x)*k_beta_x
     a_y = phi_beta_y*k_beta_y
     b_y = (1-phi_beta_y)*k_beta_y
-    for i in range(N):
-        p_x = dist.Beta(a_x, b_x).sample().float()
-        d2[i, 0] = dist.Binomial(total_count=n, probs=p_x).sample().squeeze(-1)
-        p_y = dist.Beta(a_y, b_y).sample().float()
-        d2[i, 1] = dist.Binomial(total_count=n, probs=p_y).sample().squeeze(-1)
+    # for i in range(N):
+    p_x = dist.Beta(a_x, b_x).sample([N]).float()
+    d2[:, 0] = dist.Binomial(total_count=n, probs=p_x).sample().squeeze(-1)
+    p_y = dist.Beta(a_y, b_y).sample([N]).float()
+    d2[:, 1] = dist.Binomial(total_count=n, probs=p_y).sample().squeeze(-1)
 
 
     # x-axis component 2
@@ -85,16 +79,16 @@ def only_pareto_binomial_component(alpha_x=2, L_x=0.05, H_x=0.5, alpha_y=2, L_y=
     d1 = torch.ones([N, 2]) # component 1
     
     # x-axis component 1
-    for i in range(N):
-        p_p = BoundedPareto(scale=L_x, alpha = alpha_x, upper_limit = H_x).sample().float()
-        d1[i, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
+    # for i in range(N):
+    p_p = BoundedPareto(scale=L_x, alpha = alpha_x, upper_limit = H_x).sample([N]).float()
+    d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
     # p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
     # d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample([N]).squeeze(-1)
 
 
-    for i in range(N):
-        p_p = BoundedPareto(scale=L_y, alpha = alpha_y, upper_limit = H_y).sample().float()
-        d1[i, 1] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
+    # for i in range(N):
+    p_p = BoundedPareto(scale=L_y, alpha = alpha_y, upper_limit = H_y).sample(([N])).float()
+    d1[:, 1] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
 
     DP = torch.ones([N, 2]) * n
 
@@ -115,9 +109,9 @@ def pareto_binomial_component2(alpha=2, L=0.05, H=0.5, p=0.5, n=100, N=1000, exc
     d1 = torch.ones([N, 2]) # component 1
     
     # x-axis component 1
-    for i in range(N):
-        p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
-        d1[i, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
+    # for i in range(N):
+    p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample([N]).float()
+    d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample().squeeze(-1)
     # p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample().float()
     # d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample([N]).squeeze(-1)
 

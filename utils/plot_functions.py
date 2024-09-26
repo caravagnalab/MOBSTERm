@@ -24,20 +24,30 @@ def plot_deltas(mb):
         # ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Sample")
         # ax[k].set(xlabel="Distributions", ylabel="Sample")
         # ax[k].set_yticklabels([1, 2])
-        ax[k].set_yticklabels([1, 2])  # Set the desired labels
-    
-        ax[k].set_xticklabels(["Pareto", "Beta"])
-        ax[k].set(xlabel=" ")
-        ax[k].set(ylabel="Sample")
+        num_rows = deltas[k].shape[0]
+        ax[k].set_yticks([i + 0.5 for i in range(num_rows)])  # Center ticks in the middle of each row
+        ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
+
+        # Set x-tick labels
+        ax[k].set_xticklabels(["Pareto", "Beta"], rotation=0)
+
+        # Setting x and y labels for the subplot
+        ax[k].set(xlabel="", ylabel="Sample")
         if k == (deltas.shape[0] - 1):
             ax[k].set(xlabel="Distributions")
         ax[k].set_title(f"Cluster {k}", fontsize=12)
+    plt.savefig(f"deltas.png")
+    plt.show()
+    plt.close()
 
 def plot_responsib(mb):
     resp = mb.params["responsib"].detach().numpy()
     fig, ax = plt.subplots(nrows=1, ncols=1)
     fig.tight_layout()
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
+    plt.savefig(f"responsibilities.png")
+    plt.show()
+    plt.close()
 
 def plot_paretos(mb):
     alpha_pareto = mb.params["alpha_pareto_param"].detach().numpy()
@@ -54,6 +64,9 @@ def plot_paretos(mb):
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
             # ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
+    plt.savefig(f"paretos.png")
+    plt.show()
+    plt.close()
 
 def plot_betas(mb):
     phi_beta = mb.params["phi_beta_param"].detach().numpy()
@@ -72,7 +85,9 @@ def plot_betas(mb):
             pdf = beta.pdf(x, a, b)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Sample {d+1} Cluster {k} - phi {round(float(phi_beta[k,d]), ndigits=2)}, kappa {round(float(kappa_beta[k,d]), ndigits=2)}", fontsize=10)
-
+    plt.savefig(f"betas.png")
+    plt.show()
+    plt.close()
 
 def plot_marginals(mb):
     delta = mb.params["delta_param"]  # K x D x 2
@@ -86,9 +101,9 @@ def plot_marginals(mb):
     # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
     # For each cluster, we want to plot the histogram of the data assigned to that cluster
     if mb.K == 1:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(10, 4))
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(12, 4))
     else:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(10, mb.K*3))
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(12, mb.K*3))
     if mb.K == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
     x = np.linspace(0.001, 1, 1000)
@@ -112,10 +127,12 @@ def plot_marginals(mb):
             # for i in np.unique(labels):
             axes[k,d].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))
             axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
-            # axes[d,k].set_ylim([0,100])
+            axes[k,d].set_ylim([0,25])
             axes[k,d].set_xlim([0,1])
             plt.tight_layout()
-
+    plt.savefig(f"marginals.png")
+    plt.show()
+    plt.close()
 
 def plot_marginals2(mb):
     delta = mb.params["delta_param"]  # K x D x 2
@@ -158,41 +175,3 @@ def plot_marginals2(mb):
             # axes[d,k].set_ylim([0,100])
             axes[d,k].set_xlim([0,1])
             plt.tight_layout()
-
-# def plot_marginals(mb):
-#     delta = mb.params["delta_param"]  # K x D x 2
-#     phi_beta = mb.params["phi_beta_param"].detach().numpy()
-#     kappa_beta = mb.params["k_beta_param"].detach().numpy()
-#     alpha = mb.params["alpha_pareto_param"].detach().numpy()
-#     weights = mb.params["weights_param"].detach().numpy()
-#     labels = mb.params['cluster_assignments'].detach().numpy()
-
-#     # For each dimension, for each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
-#     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-#     x = np.linspace(0.001, 1, 1000)
-#     for d in range(mb.NV.shape[1]):
-#         for k in range(mb.K):
-#             delta_kd = delta[k, d]
-#             maxx = torch.argmax(delta_kd)
-#             if maxx == 1:
-#                 # plot beta
-#                 a = phi_beta[k,d] * kappa_beta[k,d]
-#                 b = (1-phi_beta[k,d]) * kappa_beta[k,d]
-#                 pdf = beta.pdf(x, a, b)# * weights[k]
-#                 axes[d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
-#             else:
-#                 #plot pareto
-#                 pdf = pareto.pdf(x, alpha[k,d], scale=0.01)# * weights[k]
-#                 axes[d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
-#         axes[d].legend()
-#         data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
-#         # cmap = plt.get_cmap('viridis', np.unique(labels))
-#         for i in np.unique(labels):
-#             axes[d].hist(data[labels == i], density=True, bins=30, alpha=0.5)#, color=cmap(i))
-
-#         # axes[d].hist(data[labels == 0], density=True, bins=30, alpha=0.3, color='violet')
-#         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
-#         axes[d].set_title(f"Sample {d+1}")
-#         # axes[d].set_ylim([0,100])
-#         axes[d].set_xlim([0,1])
-#         plt.tight_layout()
