@@ -38,7 +38,7 @@ plt.scatter(NV[:,0]/DP[:,0], NV[:,1]/DP[:,1])
 plt.xlabel('Set7_55')
 plt.ylabel('Set7_57')
 plt.title('Set7_55 vs Set7_57')
-plt.savefig('original_data.png') 
+plt.savefig('plots/original_data.png') 
 plt.close()
 
 final_mb, mb_list = model_mobster_mv.fit(NV, DP, num_iter = 3000, K = [5], seed = [40], lr = 0.005)

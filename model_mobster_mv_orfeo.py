@@ -539,7 +539,7 @@ class mobster_MV():
         ax[0].set_title("Loss")
         ax[1].plot(self.lks)
         ax[1].set_title("Likelihood")
-        plt.savefig(f"likelihood_K_{self.K}_seed_{self.seed}.png")
+        plt.savefig(f"plots/likelihood_K_{self.K}_seed_{self.seed}.png")
         plt.close()
 
     def plot_grad_norms(self, gradient_norms):
@@ -551,7 +551,7 @@ class mobster_MV():
         plt.yscale("log")
         plt.legend(loc="best")
         plt.title("Gradient norms during SVI")
-        plt.savefig(f"gradient_norms_K_{self.K}_seed_{self.seed}.png")
+        plt.savefig(f"plots/gradient_norms_K_{self.K}_seed_{self.seed}.png")
         plt.close()
         
     def plot(self):
@@ -573,7 +573,7 @@ class mobster_MV():
         plt.gca().add_artist(legend1)
         plt.xlabel('Set7_55')
         plt.ylabel('Set7_57')
-        plt.savefig(f"inference_K_{self.K}_seed_{self.seed}.png")
+        plt.savefig(f"plots/inference_K_{self.K}_seed_{self.seed}.png")
         plt.close()
         
 def calculate_number_of_params(params):

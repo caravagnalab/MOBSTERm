@@ -36,7 +36,7 @@ def plot_deltas(mb):
         if k == (deltas.shape[0] - 1):
             ax[k].set(xlabel="Distributions")
         ax[k].set_title(f"Cluster {k}", fontsize=12)
-    plt.savefig(f"deltas.png")
+    plt.savefig(f"plots/deltas.png")
     plt.show()
     plt.close()
 
@@ -45,7 +45,7 @@ def plot_responsib(mb):
     fig, ax = plt.subplots(nrows=1, ncols=1)
     fig.tight_layout()
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
-    plt.savefig(f"responsibilities.png")
+    plt.savefig(f"plots/responsibilities.png")
     plt.show()
     plt.close()
 
@@ -64,7 +64,7 @@ def plot_paretos(mb):
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
             # ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
-    plt.savefig(f"paretos.png")
+    plt.savefig(f"plots/paretos.png")
     plt.show()
     plt.close()
 
@@ -85,7 +85,7 @@ def plot_betas(mb):
             pdf = beta.pdf(x, a, b)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Sample {d+1} Cluster {k} - phi {round(float(phi_beta[k,d]), ndigits=2)}, kappa {round(float(kappa_beta[k,d]), ndigits=2)}", fontsize=10)
-    plt.savefig(f"betas.png")
+    plt.savefig(f"plots/betas.png")
     plt.show()
     plt.close()
 
@@ -130,7 +130,7 @@ def plot_marginals(mb):
             axes[k,d].set_ylim([0,25])
             axes[k,d].set_xlim([0,1])
             plt.tight_layout()
-    plt.savefig(f"marginals.png")
+    plt.savefig(f"plots/marginals.png")
     plt.show()
     plt.close()
 
