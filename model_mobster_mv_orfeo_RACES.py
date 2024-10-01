@@ -1,6 +1,11 @@
 import numpy as np
 import pyro
 import pyro.distributions as dist
+from matplotlib.backends.backend_pdf import PdfPages
+import pickle
+import copy
+import json
+import ast
 
 import torch
 import torch.nn as nn
@@ -16,44 +21,94 @@ from utils.BoundedPareto import BoundedPareto
 from collections import defaultdict
 from pandas.core.common import flatten
 import copy
+from utils.plot_functions import *
+
+def convert_to_list(item):
+    """
+    Recursively converts all NumPy arrays and PyTorch tensors in a dictionary or list
+    to Python lists.
+    """
+    if isinstance(item, dict):
+        return {key: convert_to_list(value) for key, value in item.items()}
+    elif isinstance(item, list):
+        return [convert_to_list(element) for element in item]
+    elif isinstance(item, np.ndarray):  # Check if it's a NumPy array
+        return item.tolist()
+    elif isinstance(item, torch.Tensor):  # Check if it's a PyTorch tensor
+        return item.detach().cpu().tolist()  # Detach from computation graph and convert to list
+    else:
+        return item
 
 def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto = True, 
-        purity=1, seed=[1,2,3], lr = 0.001):
+        purity=1, seed=[1,2,3], lr = 0.001, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
     min_bic = torch.tensor(float('inf'))
-    min_bic_seed = torch.tensor(float('inf'))
+    best_K = torch.tensor(float('inf'))
+    best_total_seed = torch.tensor(float('inf'))
     mb_list = []
-    curr_mb = []
-    best_seed = 0
-    j = 0
+    # best_seed = torch.tensor(float('inf'))
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)} is available.")
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    else:
+        print("No GPU available. Training will run on CPU.")
+      
     for curr_k in K:
+        j = 0
+        curr_mb = []
+        list_to_save = []
+        min_bic_seed = torch.tensor(float('inf'))
+        best_seed = 0
         if curr_k != 0:
             # Fai ciclo con 4/5 seed diversi e prendi bic minore
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                curr_mb.append(mobster_MV(NV, DP, K = curr_k, seed = curr_seed))
+                curr_mb.append(mobster_MV(NV, DP, K = curr_k, seed = curr_seed, savefig = savefig, data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
+                dict = copy.copy(curr_mb[j].__dict__)
+                for key, value in dict.items():
+                    if isinstance(value, torch.Tensor):  # Check if the value is a tensor
+                        dict[key] = convert_to_list(value)#.detach().cpu().numpy()  # Convert tensor to lists
+                list_to_save.append(dict)
+
                 if curr_mb[j].final_dict['bic'] <= min_bic_seed:
                     min_bic_seed = curr_mb[j].final_dict['bic']
                     mb_best_seed = curr_mb[j]
                     best_seed = curr_seed
                 j+=1
-            mb_list.append(mb_best_seed)
-    i = 0
-    final_index = 0
-    for obj in mb_list:
-        if obj.final_dict['bic'] <= min_bic:
-            final_index = i
-    final_k = K[final_index]
-    print(f"Selected number of clusters is {final_k} with seed {best_seed}")
-    final_mb = mb_list[final_index]
-    final_mb.plot()
-    return final_mb, mb_list
+            filename = f'saved_objects/{data_folder}/K_{curr_k}.txt'
+            with open(filename, 'w') as f:
+                for dictionary in list_to_save:
+                    # Recursively convert NumPy arrays to lists
+                    dict_copy = convert_to_list(dictionary)
+                    # Write the JSON representation of each dictionary to the file
+                    f.write(json.dumps(dict_copy) + '\n')  # Write as a JSON string
+            
+            plot_marginals(mb_best_seed, which = 'integr', savefig = savefig, data_folder = data_folder)
+            plot_marginals(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
+            plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            plot_responsib(mb_best_seed, which = 'integr', savefig = savefig, data_folder = data_folder)
+            plot_responsib(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
+            with PdfPages(f'plots/{data_folder}/final_analysis/K_{curr_k}_seed_{best_seed}.pdf') as pdf:
+                for fig_num in plt.get_fignums():
+                    pdf.savefig(plt.figure(fig_num))
+                    plt.close(plt.figure(fig_num))
+            # mb_list.append(mb_best_seed)
+            if mb_best_seed.final_dict['bic'] <= min_bic:
+                min_bic = mb_best_seed.final_dict['bic']
+                best_K = mb_best_seed.K
+                best_total_seed = mb_best_seed.seed
+    print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
+    
+    return best_K, best_total_seed
+
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, tail=1, truncated_pareto = True, purity=1, seed=2):
+    def __init__(self, NV = None, DP = None, K = 1, tail=1, truncated_pareto = True, purity=1, seed=2, savefig = False, data_folder = None):
         """
         Parameters:
         
@@ -71,26 +126,31 @@ class mobster_MV():
                 Previously estimated purity of the tumor
         """   
 
-        self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
-        self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
+        if NV is not None:
+            self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
+        if DP is not None:
+            self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
         self.K = K
         self.tail = tail
         self.truncated_pareto = truncated_pareto
         self.purity = purity
         self.seed = seed
+        self.savefig = savefig
+        self.data_folder = data_folder
 
         pyro.clear_param_store()
         pyro.set_rng_seed(self.seed)
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         self.set_prior_parameters()
-        print("NV = 0 before:", torch.sum(self.NV == 0))
-        # self.zero_NV_idx = (self.NV/self.DP < 0.01)
-        # self.zero_NV_idx = (self.NV == 0.)
-        # self.NV[self.zero_NV_idx] = torch.where(torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype) < 1, 
-        #                                    torch.tensor(1, dtype=NV.dtype), torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype))
-        print("NV = 0 after:", torch.sum(self.NV == 0))
-        # print("VAF zero_idx: ", self.NV[self.zero_NV_idx]/self.DP[self.zero_NV_idx])
+        if NV is not None and DP is not None:
+            print("NV = 0 before:", torch.sum(self.NV == 0))
+            # self.zero_NV_idx = (self.NV/self.DP < 0.01)
+            # self.zero_NV_idx = (self.NV == 0.)
+            # self.NV[self.zero_NV_idx] = torch.where(torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype) < 1, 
+            #                                    torch.tensor(1, dtype=NV.dtype), torch.round(DP[self.zero_NV_idx] * 0.01).to(NV.dtype))
+            print("NV = 0 after:", torch.sum(self.NV == 0))
+            # print("VAF zero_idx: ", self.NV[self.zero_NV_idx]/self.DP[self.zero_NV_idx])
 
     
     def compute_kmeans_centers(self):
@@ -127,7 +187,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         # Clip probabilities in [min_vaf, 0.999]
-        best_centers[best_centers <= 0] = torch.min(self.phi_beta_L)
+        best_centers[best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L)
         # best_centers[best_centers <= 0] = 1 - 0.999
         best_centers[best_centers >= 1] = 0.999
         self.kmeans_centers = best_centers
@@ -213,7 +273,7 @@ class mobster_MV():
         betabin = dist.BetaBinomial(a_beta, b_beta, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return betabin # simply does log(weights) + log(density)
 
-    def pareto_lk(self, d, alpha):
+    def pareto_lk_integr(self, d, alpha):
         LINSPACE = 10000
         x = torch.linspace(self.pareto_L, self.pareto_H, LINSPACE)
         y_1 = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(x).exp()
@@ -224,6 +284,11 @@ class mobster_MV():
         # paretobin2 = dist.Binomial(probs=p, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return paretobin # tensor of len N (if D = 1, only N)
     
+    def pareto_lk_sampling_p(self, d, alpha):
+        p = BoundedPareto(self.pareto_L, alpha, self.pareto_H).sample()
+        paretobin = dist.Binomial(probs=p, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
+        return paretobin # tensor of len N (if D = 1, only N)
+    
     def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
         # delta -> D x 2
         delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # NxD tensor
@@ -232,24 +297,22 @@ class mobster_MV():
         # Stack ctreates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
         return self.log_sum_exp(torch.stack((delta_pareto, delta_beta), dim=0)) # N
     
-    def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
+    def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta, which):
         # delta -> D x 2
-        # delta_pareto = torch.log(delta[:, 0]) + self.pareto_lk(alpha)   # NxD tensor
-        # delta_beta = torch.log(delta[:, 1]) + self.beta_lk(a_beta, b_beta) # N x D tensor
-        
-        # return self.log_sum_exp(torch.stack((delta_pareto, delta_beta), dim=0)) # N x D
         log_lik = []
         for d in range(delta.shape[0]): # range over samples
             if (delta[d, 0] > delta[d, 1]): # pareto
                 # log_lik.append(torch.log(delta[d, 0]) + self.pareto_lk(d, alpha[d])) # N tensor
-                log_lik.append(self.pareto_lk(d, alpha[d])) # N tensor
+                if which == 'posteriors_integr':
+                    log_lik.append(self.pareto_lk_integr(d, alpha[d])) # N tensor
+                else:
+                    log_lik.append(self.pareto_lk_sampling_p(d, alpha[d])) # N tensor
             else:
                 # log_lik.append(torch.log(delta[d, 1]) + self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
                 log_lik.append(self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
         
         stack_tensors = torch.stack((log_lik[0], log_lik[1]), dim=1) # combine together the tensors of dim 0 and 1 to create a N x D tensor
         # Non mi serve log sum exp perchè non devo più sommare sui delta_j
-        # print("stack_tensors", stack_tensors.shape)
         return stack_tensors # N x D
            
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
@@ -259,7 +322,8 @@ class mobster_MV():
             if which == 'inference':
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_inference(probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
             else:
-                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :], which).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+
         return lk
     
     def compute_min_vaf(self):
@@ -304,8 +368,8 @@ class mobster_MV():
         self.max_alpha = torch.tensor(4.)
 
         # Bounded pareto
-        # self.pareto_L = torch.tensor(0.01)
-        self.pareto_L = torch.tensor(0.005)
+        self.pareto_L = self.min_vaf
+        # self.pareto_L = torch.tensor(0.005)
         # self.pareto_L = self.compute_min_vaf()
         self.pareto_H = self.max_vaf
 
@@ -327,9 +391,10 @@ class mobster_MV():
                 # Prior for the Beta-Pareto weights
                 # delta is a K x D x 2 torch tensor (K: num layers, D: rows per layer, 2: columns per layer)
                 delta = pyro.sample("delta", dist.Dirichlet(torch.ones(2)))
-                # delta = torch.softmax(delta, dim=-1)
-                # delta = delta / delta.sum(dim=-1, keepdim=True)
-                
+                # print("Delta before: ", delta)
+                delta = torch.round(delta * 10000) / 10000
+                delta = delta / delta.sum(dim=-1, keepdim=True)
+                # print("Delta after: ", delta)
                 # w = pyro.sample("w", dist.OneHotCategorical(probs = delta))
                 w = pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs=delta))
                 
@@ -368,10 +433,9 @@ class mobster_MV():
         # k_beta_param = pyro.param("k_beta_param", lambda: self.init_kappas, constraint=constraints.positive)
 
         delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
-        # delta_param = torch.softmax(delta_param, dim=-1)
-        
+
         # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(2)).sample([K, D]).reshape(K, D, 2), constraint=constraints.simplex)
-        # delta_param = delta_param / delta_param.sum(dim=-1, keepdim=True)
+
         # print("delta_param", delta_param)
 
         with pyro.plate("plate_dims", D):
@@ -416,11 +480,30 @@ class mobster_MV():
     
     # Model selection
     def compute_BIC(self, params, final_lk):
-        n_params = calculate_number_of_params(params)
-        n = self.NV.shape[0]
-        # lk = self.log_sum_exp(self.compute_final_lk()).sum()
+        # final_lk: K x N
+        n_params = self.calculate_number_of_params(params)
+        print("n_params: ", n_params)
+        n = torch.tensor(self.NV.shape[0])
+        print("n: ", n)
         lk = self.log_sum_exp(final_lk).sum()
-        return np.log(n) * n_params - 2 * lk
+        print("lk: ", lk)
+        return torch.log(n) * n_params - torch.tensor(2.) * lk
+    
+    def compute_entropy(self, params):
+        posts = params["responsib"] # K x N
+        entropy = 0
+        for k in range(posts.shape[0]):
+            posts_k = posts[k,:] # len N
+            log_post_k = torch.log(posts_k + 0.000001) # len N
+            post_k_entr = posts_k * log_post_k  # len N (multiplication element-wise)
+            post_k_entr = torch.sum(post_k_entr) # sum over N
+            entropy += post_k_entr
+        entropy = -1 * entropy
+        return entropy
+
+    def compute_ICL(self, params, bic):
+        entropy = self.compute_entropy(params)
+        return bic + entropy
 
     def run_inference(self, num_iter = 2000, lr = 0.001):
         pyro.clear_param_store()
@@ -434,7 +517,7 @@ class mobster_MV():
         svi.step()
         gradient_norms = defaultdict(list)
         for name, value in pyro.get_param_store().named_parameters():
-            if name in ["alpha_pareto_param", "delta_param", "weights_param", "w_param"]:
+            if name in ["alpha_pareto_param", "delta_param", "weights_param"]:
                 value.register_hook(
                     lambda g, name=name: gradient_norms[name].append(g.norm().item())
                 )
@@ -444,8 +527,8 @@ class mobster_MV():
         i = 0
         min_iter = 100
         check_conv = 0
-        old_par = self.get_parameters() # Save current values of the parameters in old_params
-        old_par.pop('weights_param')
+        # old_par = self.get_parameters() # Save current values of the parameters in old_params
+        # old_par.pop('weights_param')
 
         initial_temperature = 1.0
         final_temperature = 0.01
@@ -460,8 +543,8 @@ class mobster_MV():
 
             # Save likelihood values
             params = self.get_parameters()
-            if i == 0:
-                print("delta_param", params["delta_param"])
+            # if i == 0:
+            #     print("delta_param", params["delta_param"])
             
             a_beta = params["phi_beta_param"] * params["k_beta_param"]
             b_beta = (1-params["phi_beta_param"]) * params["k_beta_param"]
@@ -471,9 +554,9 @@ class mobster_MV():
                                                    params["weights_param"], params["delta_param"], which = 'inference')).sum()
             self.lks.append(lks.detach().numpy())
 
-            new_par = params.copy()
-            new_par.pop('weights_param')
-            check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+            # new_par = params.copy()
+            # new_par.pop('weights_param')
+            # check_conv = self.stopping_criteria(old_par, new_par, check_conv)
             
             # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
             # if check_conv == min_iter:
@@ -486,22 +569,36 @@ class mobster_MV():
         self.plot_loss_lks()
         self.plot_grad_norms(gradient_norms)
         
-            # for i in range(10):
-        # pyro.set_rng_seed(self.seed+i)
-        # torch.manual_seed(self.seed+i)
-        # np.random.seed(self.seed+i)
-        final_lk = self.compute_posteriors()
+        final_lk, final_lk_sampling_p = self.compute_posteriors()
+        print("Inference lk: ", self.lks[-1])
+        print("Final lk (integr): ", self.log_sum_exp(final_lk).sum())
+        print("Final lk (sampling p): ", self.log_sum_exp(final_lk).sum())
+
+        print("INTEGR: ")
         bic = self.compute_BIC(self.params, final_lk)
-        print("bic: ", bic)
+        print(f"bic: {bic} \n")
+        icl = self.compute_ICL(self.params, bic)
+        
+        print("SAMPLING p: ")
+        bic_sampling_p = self.compute_BIC(self.params, final_lk_sampling_p)
+        print(f"bic sampling: {bic_sampling_p} \n")
+        icl_sampling_p = self.compute_ICL(self.params, bic_sampling_p)
         self.plot()
+        
         self.final_dict = {
         "model_parameters" : self.params,
         "bic": bic,
-        "final_likelihood": self.lks[-1],
-        "final_loss": self.losses[-1]
+        "icl": icl,
+        "bic_sampling_p": bic_sampling_p,
+        "icl_sampling_p": icl_sampling_p,
+        
+        # "final_likelihood": self.lks[-1], # during training, so no difference between integr and sampling_p
+        "final_likelihood": self.log_sum_exp(final_lk).sum(), 
+        "final_likelihood_sampling_p": self.log_sum_exp(final_lk_sampling_p).sum(), 
+        "final_loss": self.losses[-1] # during training, so no difference between integr and sampling_p
         }
     
-    def compute_final_lk(self):
+    def compute_final_lk(self, which):
         """
         Compute likelihood with learnt parameters
         """
@@ -515,13 +612,13 @@ class mobster_MV():
         weights = self.params["weights_param"]
         
         lks = self.m_total_lk(probs_pareto = None, alpha=alpha, a_beta=a_beta, b_beta=b_beta, 
-                               weights=weights, delta=delta, which = 'posteriors') 
+                               weights=weights, delta=delta, which = which) 
 
         return lks
 
     def compute_posteriors(self):
         # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
-        lks = self.compute_final_lk() # K x N
+        lks = self.compute_final_lk(which = 'posteriors_integr') # K x N
         res = torch.zeros(self.K, len(self.NV)) # K x N
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
         for k in range(len(res)): # iterate over the clusters
@@ -530,17 +627,29 @@ class mobster_MV():
         self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
         # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
-        return lks
+        
+        lks_sampling_p = self.compute_final_lk(which = 'posteriors_sampling_p') # K x N
+        res_sampl = torch.zeros(self.K, len(self.NV)) # K x N
+        norm_fact = self.log_sum_exp(lks_sampling_p) # sums over the different cluster -> array of size 1 x len(NV)
+        for k in range(len(res_sampl)): # iterate over the clusters
+            lks_k = lks_sampling_p[k] # take row k -> array of size len(NV)
+            res_sampl[k] = torch.exp(lks_k - norm_fact)
+        self.params["responsib_sampling_p"] = res_sampl # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
+        self.params["cluster_assignments_sampling_p"] = torch.argmax(self.params["responsib_sampling_p"], dim = 0) # vector of dimension
+        
+        return lks, lks_sampling_p
 
     
     def plot_loss_lks(self):
         _, ax = plt.subplots(1, 2, figsize=(15, 5))
         ax[0].plot(self.losses)
-        ax[0].set_title("Loss")
+        ax[0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
         ax[1].plot(self.lks)
-        ax[1].set_title("Likelihood")
-        plt.savefig(f"plots/likelihood_K_{self.K}_seed_{self.seed}.png")
-        plt.close()
+        ax[1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
+        # plt.show()
+        # plt.close()
 
     def plot_grad_norms(self, gradient_norms):
         plt.figure(figsize=(10, 4), dpi=100).set_facecolor("white")
@@ -550,9 +659,11 @@ class mobster_MV():
         plt.ylabel("gradient norm")
         plt.yscale("log")
         plt.legend(loc="best")
-        plt.title("Gradient norms during SVI")
-        plt.savefig(f"plots/gradient_norms_K_{self.K}_seed_{self.seed}.png")
-        plt.close()
+        plt.title(f"Gradient norms during SVI (K = {self.K}, seed = {self.seed})")
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/gradient_norms_K_{self.K}_seed_{self.seed}.png")
+        # plt.show()
+        # plt.close()
         
     def plot(self):
         """
@@ -564,22 +675,45 @@ class mobster_MV():
 
         DP_S1 = self.DP[:,0]
         DP_S2 = self.DP[:,1]
+        plt.figure()
         plt.xlim([0,1])
         plt.ylim([0,1])
-        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"])
+        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"], cmap = 'tab10') # tab10
         legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
 
         plt.title(f"Final inference with K = {self.K} and seed {self.seed}")
         plt.gca().add_artist(legend1)
         plt.xlabel('Set7_55')
         plt.ylabel('Set7_57')
-        plt.savefig(f"plots/inference_K_{self.K}_seed_{self.seed}.png")
-        plt.close()
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}.png")
+        # plt.show()
+        # plt.close()
         
-def calculate_number_of_params(params):
-    total_params = 0
-    for key, param in params.items():
-        param_size = np.prod(param.shape)  # Calculate the total number of elements
-        total_params += param_size
-    return total_params
+        plt.figure()
+        plt.xlim([0,1])
+        plt.ylim([0,1])
+        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments_sampling_p"], cmap = 'tab10') # Set3
+        legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
+
+        plt.title(f"Final inference with K = {self.K} and seed {self.seed} (sampling p)")
+        plt.gca().add_artist(legend1)
+        plt.xlabel('Set7_55')
+        plt.ylabel('Set7_57')
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}_sampling_p.png")
+        # plt.show()
+        # plt.close()
+
+
+    def calculate_number_of_params(self, params):
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param"]
+        total_params = 0
+        for key, param in params.items():
+            if key in keys:
+                param_size = np.prod(param.shape)  # Calculate the total number of elements
+                total_params += param_size
+        return total_params
+    
+
     
