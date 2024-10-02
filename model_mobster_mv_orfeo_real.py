@@ -674,8 +674,8 @@ class mobster_MV():
         
         phi_beta = self.params["phi_beta_param"]
         k_beta = self.params["k_beta_param"]
-        a_beta = phi_beta * k_beta
-        b_beta = (1-phi_beta) * k_beta
+        a_beta = self.get_a_beta(phi_beta, k_beta)
+        b_beta = self.get_b_beta(phi_beta, k_beta)
         weights = self.params["weights_param"]
         
         lks = self.m_total_lk(probs_pareto = None, alpha=alpha, a_beta=a_beta, b_beta=b_beta, 
