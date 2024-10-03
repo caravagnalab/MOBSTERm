@@ -173,7 +173,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         self.kmeans_centers_no_noise = best_centers.clone()
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf)
+        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= 1] = 0.999
         
         mean = 0
@@ -186,7 +186,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         # Clip probabilities in [min_vaf, 0.999]
-        best_centers[best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L)
+        best_centers[best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L) # used as initial value of phi_beta
         # best_centers[best_centers <= 0] = 1 - 0.999
         best_centers[best_centers >= 1] = 0.999
         self.kmeans_centers = best_centers
@@ -367,7 +367,7 @@ class mobster_MV():
 
     def set_prior_parameters(self):
         self.max_vaf = torch.tensor(0.55) # for a 1:1 karyotype
-        self.min_vaf = torch.tensor(0.01)
+        self.min_vaf = torch.tensor(0.05)
 
         # phi_beta
         self.phi_beta_L = torch.tensor(0.15)
@@ -376,12 +376,13 @@ class mobster_MV():
 
         # k_beta
         self.k_beta_L = torch.tensor(90.)
-        self.k_beta_init = torch.tensor(100.)
-        self.k_beta_std = torch.tensor(5.)
+        self.k_beta_init = torch.tensor(100.) # which will be 90+100
+        # self.k_beta_std = torch.tensor(5.)
+        self.k_beta_std = torch.tensor(50.)
 
         # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.1)
-        self.alpha_pareto_std = torch.tensor(0.005)
+        self.alpha_pareto_std = torch.tensor(0.01)
         self.alpha_factor = torch.tensor(2.)
         self.alpha_pareto_init = torch.tensor(1.1)
         self.min_alpha = torch.tensor(0.5)
@@ -483,14 +484,20 @@ class mobster_MV():
         alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.interval(self.min_alpha, self.max_alpha))        
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
-        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.greater_than(self.k_beta_L))
-        # k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
-        # k_beta_param = pyro.param("k_beta_param", lambda: self.init_kappas, constraint=constraints.positive)
+        # k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.greater_than(self.k_beta_L))
+        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
 
+        # probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.pareto_L, self.pareto_H))
+        
         delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
-
+        # w_param = pyro.param("w_param", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs = delta_param).sample(), constraint=constraints.simplex)
         # print("delta_param", delta_param)
 
+        w_param = pyro.param(
+            "w_param",
+            lambda: torch.where(self.init_delta < 0.5, torch.tensor(1e-10), torch.tensor(1 - 1e-10)),
+            constraint=constraints.simplex
+        )
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
                 alpha = pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
@@ -499,10 +506,12 @@ class mobster_MV():
                 pyro.sample("k_beta", dist.Delta(k_beta_param))
 
                 pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H))
+                # pyro.sample("probs_pareto", dist.Delta(probs_pareto_param))
                 pyro.sample("delta", dist.Delta(delta_param).to_event(1))
+                
+                pyro.sample("w", dist.Delta(w_param).to_event(1))
 
-                # pyro.sample("w", dist.OneHotCategorical(probs = delta_param))
-                pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs = delta_param))
+                # pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs = delta_param))
 
 
     def get_parameters(self):
@@ -576,8 +585,8 @@ class mobster_MV():
         self.cluster_initialization()
         # NV, DP = self.NV, self.DP
 
-        # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
-        svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
+        svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
+        # svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
 
         svi.step()
         gradient_norms = defaultdict(list)
@@ -631,6 +640,7 @@ class mobster_MV():
                 print("Iteration {}: Loss = {}".format(i, loss))
 
         self.params = self.get_parameters()
+        
 
         self.plot_loss_lks()
         self.plot_grad_norms(gradient_norms)
@@ -650,7 +660,8 @@ class mobster_MV():
         print(f"bic sampling: {bic_sampling_p} \n")
         icl_sampling_p = self.compute_ICL(self.params, bic_sampling_p)
         self.plot()
-
+        self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
+        
         self.final_dict = {
         "model_parameters" : self.params,
         "bic": bic,
@@ -752,8 +763,8 @@ class mobster_MV():
 
         plt.title(f"Final inference with K = {self.K} and seed {self.seed}")
         plt.gca().add_artist(legend1)
-        plt.xlabel('Set7_55')
-        plt.ylabel('Set7_57')
+        # plt.xlabel('Set7_55')
+        # plt.ylabel('Set7_57')
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}.png")
         plt.show()
@@ -767,8 +778,8 @@ class mobster_MV():
 
         plt.title(f"Final inference with K = {self.K} and seed {self.seed} (sampling p)")
         plt.gca().add_artist(legend1)
-        plt.xlabel('Set7_55')
-        plt.ylabel('Set7_57')
+        # plt.xlabel('Set7_55')
+        # plt.ylabel('Set7_57')
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}_sampling_p.png")
         plt.show()
@@ -776,13 +787,11 @@ class mobster_MV():
 
 
     def calculate_number_of_params(self, params):
-        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param"]
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param", "probs_pareto_param", "w_param"]
         total_params = 0
         for key, param in params.items():
             if key in keys:
                 param_size = np.prod(param.shape)  # Calculate the total number of elements
                 total_params += param_size
         return total_params
-    
-
     
