@@ -62,6 +62,10 @@ def plot_responsib(mb, which, savefig = False, data_folder = None):
     # plt.close()
 
 def plot_paretos(mb, savefig = False, data_folder = None):
+    check = False
+    check = "probs_pareto_param" in mb.params.keys()
+    if check:
+        probs_pareto = mb.params["probs_pareto_param"]
     alpha_pareto = mb.params["alpha_pareto_param"].detach().numpy()
     if alpha_pareto.shape[0] == 1:
         fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (7,3))
@@ -75,7 +79,10 @@ def plot_paretos(mb, savefig = False, data_folder = None):
         for d in range(alpha_pareto.shape[1]):
             pdf = pareto.pdf(x, alpha_pareto[k,d], scale=0.001)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
-            ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
+            if check:
+                ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}, p {round(float(probs_pareto[k,d]), ndigits=2)}", fontsize=10)
+            else:
+                ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
             # ax[k,d].set_title(f"Cluster {k} Dimension {d} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}")
     seed = mb.seed
     if savefig:
