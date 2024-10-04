@@ -85,6 +85,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
             
             plot_marginals(mb_best_seed, which = 'integr', savefig = savefig, data_folder = data_folder)
             plot_marginals(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
+            plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
@@ -376,13 +377,14 @@ class mobster_MV():
 
         # k_beta
         self.k_beta_L = torch.tensor(90.)
-        self.k_beta_init = torch.tensor(100.) # which will be 90+100
-        # self.k_beta_std = torch.tensor(5.)
-        self.k_beta_std = torch.tensor(50.)
+        self.k_beta_init = torch.tensor(200.) # which will be 90+200
+        # self.k_beta_std = torch.tensor(100.)
+        self.k_beta_mean = torch.tensor(300.)
+        self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.1)
-        self.alpha_pareto_std = torch.tensor(0.01)
+        self.alpha_pareto_std = torch.tensor(0.5)
         self.alpha_factor = torch.tensor(2.)
         self.alpha_pareto_init = torch.tensor(1.1)
         self.min_alpha = torch.tensor(0.5)
@@ -417,8 +419,8 @@ class mobster_MV():
                 w = pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs=delta))
                 
                 phi_beta = pyro.sample("phi_beta", dist.Uniform(self.phi_beta_L, self.phi_beta_H)) # 0.5 because we are considering a 1:1 karyotype
-                # k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.k_beta_mean), self.k_beta_std))
-                k_beta = pyro.sample("k_beta", dist.HalfNormal(self.k_beta_std))
+                k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.k_beta_mean), self.k_beta_std))
+                # k_beta = pyro.sample("k_beta", dist.HalfNormal(self.k_beta_std))
 
                 a_beta = self.get_a_beta(phi_beta, k_beta)
                 b_beta = self.get_b_beta(phi_beta, k_beta)
@@ -484,10 +486,10 @@ class mobster_MV():
         alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.interval(self.min_alpha, self.max_alpha))        
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
-        # k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.greater_than(self.k_beta_L))
+        
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
 
-        # probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.pareto_L, self.pareto_H))
+        probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.pareto_L, self.pareto_H))
         
         delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
         # w_param = pyro.param("w_param", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs = delta_param).sample(), constraint=constraints.simplex)
@@ -505,8 +507,8 @@ class mobster_MV():
                 pyro.sample("phi_beta", dist.Delta(phi_beta_param))
                 pyro.sample("k_beta", dist.Delta(k_beta_param))
 
-                pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H))
-                # pyro.sample("probs_pareto", dist.Delta(probs_pareto_param))
+                # pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H))
+                pyro.sample("probs_pareto", dist.Delta(probs_pareto_param))
                 pyro.sample("delta", dist.Delta(delta_param).to_event(1))
                 
                 pyro.sample("w", dist.Delta(w_param).to_event(1))
@@ -585,8 +587,8 @@ class mobster_MV():
         self.cluster_initialization()
         # NV, DP = self.NV, self.DP
 
-        svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
-        # svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
+        # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
+        svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
 
         svi.step()
         gradient_norms = defaultdict(list)
@@ -640,7 +642,6 @@ class mobster_MV():
                 print("Iteration {}: Loss = {}".format(i, loss))
 
         self.params = self.get_parameters()
-        
 
         self.plot_loss_lks()
         self.plot_grad_norms(gradient_norms)
@@ -722,8 +723,27 @@ class mobster_MV():
         _, ax = plt.subplots(1, 2, figsize=(15, 5))
         ax[0].plot(self.losses)
         ax[0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
+        
+        # loss_values = np.array(self.losses)
+        # cumulative_mean = np.cumsum(loss_values) / np.arange(1, len(v) + 1)
+
+        # window_size = 100
+        # local_mean = np.convolve(loss_values, np.ones(window_size) / window_size, mode="valid")
+        # ax[0].plot(cumulative_mean, label="Cumulative Mean", color="orange")
+        # ax[0].plot(np.arange(window_size-1, len(loss_values)), local_mean, label=f"Local Mean", color="red")
+
         ax[1].plot(self.lks)
         ax[1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
+        
+        # likelihood_values = [val.item() for val in self.lks]  # Convert tensors to scalars
+        # likelihood_values = np.array(likelihood_values)
+        # cumulative_mean = np.cumsum(likelihood_values) / np.arange(1, len(likelihood_values) + 1)
+
+        # window_size = 100
+        # local_mean = np.convolve(likelihood_values, np.ones(window_size) / window_size, mode="valid")
+        # ax[1].plot(cumulative_mean, label="Cumulative Mean", color="orange")
+        # ax[1].plot(np.arange(window_size-1, len(likelihood_values)), local_mean, label=f"Local Mean", color="red")
+        
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
         # plt.show()
@@ -755,21 +775,34 @@ class mobster_MV():
 
         DP_S1 = self.DP[:,0]
         DP_S2 = self.DP[:,1]
+        unique_labels = np.unique(self.params["cluster_assignments"].detach().numpy())
+        labels = self.params["cluster_assignments"].detach().numpy()
+        cmap = cm.get_cmap('tab20')
+        color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+    
         plt.figure()
         plt.xlim([0,1])
         plt.ylim([0,1])
-        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"], cmap = 'Set3') # tab10
-        legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
-
+        colors = [color_mapping[label] for label in labels]
+        sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c=colors, cmap = 'Set3') # tab10
+        handles = [plt.Line2D([0], [0], marker='o', color='w', label=label,
+                        markerfacecolor=color_mapping[label], markersize=10) 
+            for label in unique_labels]
+        plt.legend(handles=handles)
+        # sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c = self.params["cluster_assignments"], cmap = 'Set3') # tab10
+        # legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
+        # plt.gca().add_artist(legend1)
+        
         plt.title(f"Final inference with K = {self.K} and seed {self.seed}")
-        plt.gca().add_artist(legend1)
-        # plt.xlabel('Set7_55')
-        # plt.ylabel('Set7_57')
+        plt.xlabel('Set7_55')
+        plt.ylabel('Set7_57')
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}.png")
         plt.show()
         # plt.close()
         
+
+        """
         plt.figure()
         plt.xlim([0,1])
         plt.ylim([0,1])
@@ -778,14 +811,13 @@ class mobster_MV():
 
         plt.title(f"Final inference with K = {self.K} and seed {self.seed} (sampling p)")
         plt.gca().add_artist(legend1)
-        # plt.xlabel('Set7_55')
-        # plt.ylabel('Set7_57')
+        plt.xlabel('Set7_55')
+        plt.ylabel('Set7_57')
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}_sampling_p.png")
         plt.show()
         # plt.close()
-
-
+        """
     def calculate_number_of_params(self, params):
         keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param", "probs_pareto_param", "w_param"]
         total_params = 0

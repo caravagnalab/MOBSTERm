@@ -11,7 +11,7 @@ import torch
 import seaborn as sns
 
 import matplotlib.pyplot as plt
-plt.style.use('ggplot')
+# plt.style.use('ggplot')
 from sklearn.metrics.cluster import normalized_mutual_info_score
 
 from utils.plot_functions import *
@@ -39,7 +39,7 @@ DP2 = torch.tensor(data['Set7_57.DP'].to_numpy())
 NV = torch.stack((NV1,NV2),dim=1)
 DP = torch.stack((DP1,DP2),dim=1)
 ylim = 3000
-data_folder = 'real_data_new'
+data_folder = 'real_data_const_autoguide'
 
 
 print("Original NV data shape", NV.shape)
@@ -76,8 +76,8 @@ plt.savefig(f'plots/{data_folder}/marginals.png')
 
 save = True
 seed_list = [40,41,42]
-K_list = [2,3,4,5,6,7,8,9]
-best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 3000, K = K_list, seed = seed_list, lr = 0.005, savefig = save, data_folder = data_folder)
+K_list = [4,5,6,7,8,9]
+# best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 2500, K = K_list, seed = seed_list, lr = 0.005, savefig = save, data_folder = data_folder)
 
 # Restore saved objects
 loaded_list = []
@@ -104,6 +104,14 @@ for i in range(len(seed_list)*len(K_list)):
     mb_list[i].__dict__ = loaded_list[i]
     print(f'K = {mb_list[i].K}, seed = {mb_list[i].seed}')
 
+
+for i in range(len(mb_list)):
+    plot_marginals_alltogether(mb_list[i], savefig = True, data_folder = data_folder)
+    # plot(mb_list[i])
+
+for i in range(len(mb_list)):
+    plot_marginals_alltogether(mb_list[i], savefig = True, data_folder = data_folder)
+
 #  Create a dataframe with all the results
 def highlight_min(data):
     attr = 'background-color: #ffffcc'
@@ -114,8 +122,9 @@ def highlight_min(data):
             result[col] = [attr if v == min_value else '' for v in data[col]]
     return result
 
-keys_of_interest = ["bic", "bic_sampling_p", "icl",  "icl_sampling_p", 
-                    "final_likelihood", "final_likelihood_sampling_p", "final_loss"]
+# keys_of_interest = ["bic", "bic_sampling_p", "icl",  "icl_sampling_p", 
+#                     "final_likelihood", "final_likelihood_sampling_p", "final_loss"]
+keys_of_interest = ["bic", "icl", "final_likelihood", "final_loss"]
 data_for_df = {}
 
 
@@ -160,7 +169,7 @@ for i, k in enumerate(K_list):
 
     elements_for_K = mb_list[start_idx:end_idx]
     # values_for_specific_key = [d.final_dict["bic"] for d in elements_for_K]
-    values_for_specific_key = [d.final_dict["bic_sampling_p"] for d in elements_for_K] # Given a specific K, select the seed with the lowest bic_sampling_p
+    values_for_specific_key = [d.final_dict["bic"] for d in elements_for_K] # Given a specific K, select the seed with the lowest bic_sampling_p
     min_idx = values_for_specific_key.index(min(values_for_specific_key))
     min_idx = start_idx + min_idx
     
@@ -204,6 +213,7 @@ plt.plot(K_list, icl_list)
 plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K.png")
 plt.close()
 
+"""
 plt.figure()
 plt.title("Likelihood over K (sampling p)")
 plt.xlabel("K")
@@ -227,3 +237,4 @@ plt.ylabel("ICL")
 plt.plot(K_list, icl_sampling_list)
 plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K_sampling_p.png")
 plt.close()
+"""
