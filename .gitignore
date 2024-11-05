@@ -7,5 +7,6 @@ __pycache__/
 # Ignore
 plots/
 test_generative/
+saved_objects/
 
 *.out
