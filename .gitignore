@@ -3,3 +3,9 @@ __pycache__/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+# Ignore
+plots/
+test_generative/
+
+*.out

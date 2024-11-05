@@ -11,24 +11,15 @@ import torch
 import seaborn as sns
 
 import matplotlib.pyplot as plt
-# plt.style.use('ggplot')
 from sklearn.metrics.cluster import normalized_mutual_info_score
 
 from utils.plot_functions import *
 from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
 
-"""
-NV_r = pd.read_csv("./rRACES_data/NV2.csv")
-DP_r = pd.read_csv("./rRACES_data/DP2.csv")
+import os
 
-NV = torch.tensor(NV_r.to_numpy())
-DP = torch.tensor(DP_r.to_numpy())
-ylim = 100
-data_folder = 'rRACES_new'
-
-"""
-data = pd.read_csv("./real_data/Set7_mutations.csv")
+data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
 NV1 = torch.tensor(data['Set7_55.NV'].to_numpy())
 DP1 = torch.tensor(data['Set7_55.DP'].to_numpy())
@@ -38,14 +29,74 @@ DP2 = torch.tensor(data['Set7_57.DP'].to_numpy())
 
 NV = torch.stack((NV1,NV2),dim=1)
 DP = torch.stack((DP1,DP2),dim=1)
+
+NV3 = torch.tensor(data['Set7_59.NV'].to_numpy()).view(NV1.shape[0], 1)
+DP3 = torch.tensor(data['Set7_59.DP'].to_numpy()).view(NV1.shape[0], 1)
+
+NV = torch.cat((NV,NV3),dim=1)
+DP = torch.cat((DP,DP3),dim=1)
+
+NV4 = torch.tensor(data['Set7_62.NV'].to_numpy()).view(NV1.shape[0], 1)
+DP4 = torch.tensor(data['Set7_62.DP'].to_numpy()).view(NV1.shape[0], 1)
+
+NV = torch.cat((NV,NV4),dim=1)
+DP = torch.cat((DP,DP4),dim=1)
+""""""
 ylim = 3000
-data_folder = 'real_data_const_autoguide'
+data_folder = 'real_data_longitudinal'
+
+
+# Replace zeros with a large value that will not be considered as minimum
+vaf = NV[:,0]/DP[:,0]
+copy_vaf = torch.clone(vaf)
+masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+# Find the minimum value excluding zeros
+min_value = torch.min(masked_tensor)
+print("Min value sample 1:", min_value)
+
+# Replace zeros with a large value that will not be considered as minimum
+vaf = NV[:,1]/DP[:,1]
+copy_vaf = torch.clone(vaf)
+masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+# Find the minimum value excluding zeros
+min_value = torch.min(masked_tensor)
+print("Min value sample 2:", min_value)
+
+
+folder_path = f"plots/{data_folder}"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
+folder_path = f"plots/{data_folder}/final_analysis"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
+
+folder_path = f"saved_objects/{data_folder}"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
 
 
 print("Original NV data shape", NV.shape)
 print("Original DP data shape", DP.shape)
 
 # Plot the dataset
+plt.figure()
 plt.xlim([0,1])
 plt.ylim([0,1])
 plt.scatter(NV[:,0]/DP[:,0], NV[:,1]/DP[:,1])
@@ -54,8 +105,31 @@ plt.xlabel('Set7_55')
 plt.ylabel('Set7_57')
 plt.title('Set7_55 vs Set7_57')
 plt.title("Original data")
-plt.savefig(f'plots/{data_folder}/original_data.png')
-# plt.close()
+plt.savefig(f'plots/{data_folder}/original_data1.png')
+plt.close()
+
+plt.figure()
+plt.xlim([0,1])
+plt.ylim([0,1])
+plt.scatter(NV[:,0]/DP[:,0], NV[:,2]/DP[:,2])
+
+plt.xlabel('Set7_55')
+plt.ylabel('Set7_59')
+plt.title('Set7_55 vs Set7_59')
+plt.title("Original data")
+plt.savefig(f'plots/{data_folder}/original_data2.png')
+plt.close()
+
+plt.figure()
+plt.xlim([0,1])
+plt.ylim([0,1])
+plt.scatter(NV[:,0]/DP[:,0], NV[:,3]/DP[:,3])
+
+plt.xlabel('Set7_55')
+plt.ylabel('Set7_62')
+plt.title('Set7_55 vs Set7_62')
+plt.title("Original data")
+plt.savefig(f'plots/{data_folder}/original_data3.png')
 
 
 fig, axes = plt.subplots(1, 2, figsize=(10, 4))
@@ -74,10 +148,12 @@ axes[1].set_title("Set7_57")
 plt.savefig(f'plots/{data_folder}/marginals.png')
 # plt.close()
 
+
+
 save = True
 seed_list = [40,41,42]
-K_list = [4,5,6,7,8,9]
-# best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 2500, K = K_list, seed = seed_list, lr = 0.005, savefig = save, data_folder = data_folder)
+K_list = [3,4,5,6,7]
+best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 3000, K = K_list, seed = seed_list, lr = 0.008, savefig = save, data_folder = data_folder)
 
 # Restore saved objects
 loaded_list = []
@@ -103,14 +179,6 @@ for i in range(len(seed_list)*len(K_list)):
     mb_list.append(model_mobster_mv.mobster_MV())
     mb_list[i].__dict__ = loaded_list[i]
     print(f'K = {mb_list[i].K}, seed = {mb_list[i].seed}')
-
-
-for i in range(len(mb_list)):
-    plot_marginals_alltogether(mb_list[i], savefig = True, data_folder = data_folder)
-    # plot(mb_list[i])
-
-for i in range(len(mb_list)):
-    plot_marginals_alltogether(mb_list[i], savefig = True, data_folder = data_folder)
 
 #  Create a dataframe with all the results
 def highlight_min(data):
@@ -174,20 +242,15 @@ for i, k in enumerate(K_list):
     min_idx = start_idx + min_idx
     
     lk_sampling = mb_list[min_idx].final_dict["final_likelihood_sampling_p"]
-    bic_sampling = mb_list[min_idx].final_dict["bic_sampling_p"]
-    icl_sampling = mb_list[min_idx].final_dict["icl_sampling_p"]
     
     lk = mb_list[min_idx].final_dict["final_likelihood"]
     bic = mb_list[min_idx].final_dict["bic"]
     icl = mb_list[min_idx].final_dict["icl"]
     print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk = {lk}, bic = {bic}")
-    print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk sampling p = {lk_sampling}, bic sampling = {bic_sampling}")
+    # print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk sampling p = {lk_sampling}, bic sampling = {bic_sampling}")
     lk_list.append(lk)
     bic_list.append(bic)
     icl_list.append(icl)
-    lk_sampling_list.append(lk_sampling)
-    bic_sampling_list.append(bic_sampling)
-    icl_sampling_list.append(icl_sampling)
 
 plt.figure()
 plt.title("Likelihood over K")
@@ -213,28 +276,3 @@ plt.plot(K_list, icl_list)
 plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K.png")
 plt.close()
 
-"""
-plt.figure()
-plt.title("Likelihood over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("Likelihood")
-plt.plot(K_list, lk_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/likelihood_over_K_sampling_p.png")
-plt.close()
-
-plt.figure()
-plt.title("BIC over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("BIC")
-plt.plot(K_list, bic_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/bic_over_K_sampling_p.png")
-plt.close()
-
-plt.figure()
-plt.title("ICL over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("ICL")
-plt.plot(K_list, icl_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K_sampling_p.png")
-plt.close()
-"""

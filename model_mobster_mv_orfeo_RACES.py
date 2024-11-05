@@ -11,6 +11,7 @@ from pyro.infer.autoguide import AutoDelta
 from matplotlib.backends.backend_pdf import PdfPages
 
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from sklearn.cluster import KMeans
 from utils.BoundedPareto import BoundedPareto
 
@@ -84,13 +85,13 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
                         f.write(json.dumps(dict_copy) + '\n')  # Write as a JSON string
             
             plot_marginals(mb_best_seed, which = 'integr', savefig = savefig, data_folder = data_folder)
-            plot_marginals(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
+            # plot_marginals(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
             plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_responsib(mb_best_seed, which = 'integr', savefig = savefig, data_folder = data_folder)
-            plot_responsib(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
+            # plot_responsib(mb_best_seed, which = 'sampling_p', savefig = savefig, data_folder = data_folder)
             if savefig:
                 with PdfPages(f'plots/{data_folder}/final_analysis/K_{curr_k}_seed_{best_seed}.pdf') as pdf:
                     for fig_num in plt.get_fignums():
@@ -283,14 +284,29 @@ class mobster_MV():
         return betabin # simply does log(weights) + log(density)
 
 
-    def pareto_binomial_pmf(self, x, n, alpha):
-        integration_points = 10000
-        t = torch.linspace(self.pareto_L, self.pareto_H, integration_points)
-        binom_vals = dist.Binomial(total_count=n, probs=t).log_prob(x).exp()
-        pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()
+    # def pareto_binomial_pmf(self, x, n, alpha):
+    #     integration_points = 10000
+    #     t = torch.linspace(self.pareto_L, self.pareto_H, integration_points)
+    #     binom_vals = dist.Binomial(total_count=n, probs=t).log_prob(x).exp()
+    #     pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()
+    #     integrand = binom_vals * pareto_vals
+    #     pmf_x = torch.trapz(integrand, t).log()
+    #     return pmf_x.tolist()
+
+
+    def pareto_binomial_pmf(self, NV, DP, alpha):
+        integration_points=2000
+        # Generate integration points across all rows at once
+        t = torch.linspace(self.pareto_L, self.pareto_H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
+        NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], NV.shape[1], 1)
+        DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], DP.shape[1], 1)
+        binom_vals = dist.Binomial(total_count=DP_expanded, probs=t).log_prob(NV_expanded).exp()
+        pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()  # Shape (1, integration_points)
         integrand = binom_vals * pareto_vals
-        pmf_x = torch.trapz(integrand, t).log()
-        return pmf_x.tolist()
+
+        pmf_x = torch.trapz(integrand, t, dim=-1).log()  # Shape (NV.shape[0], NV.shape[1])
+
+        return pmf_x.tolist()  # Convert the result to a list
 
 
     def pareto_lk_integr(self, d, alpha):
@@ -299,7 +315,8 @@ class mobster_MV():
         # y_1 = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(x).exp()
         # y_2 = dist.Binomial(probs = x.repeat([self.NV.shape[0], 1]).reshape([LINSPACE,-1]), total_count=self.DP[:,d]).log_prob(self.NV[:,d]).exp()
         # paretobin = torch.trapz(y_1.reshape([LINSPACE, 1]) * y_2, x =  x, dim = 0).log()
-        paretobin = torch.tensor([self.pareto_binomial_pmf(x=self.NV[r, d], n=self.DP[r, d], alpha=alpha) for r in range(self.NV.shape[0])])
+        # paretobin = torch.tensor([self.pareto_binomial_pmf(x=self.NV[r, d], n=self.DP[r, d], alpha=alpha) for r in range(self.NV.shape[0])])
+        paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
         return paretobin # tensor of len N (if D = 1, only N)
 
 
@@ -368,7 +385,7 @@ class mobster_MV():
 
     def set_prior_parameters(self):
         self.max_vaf = torch.tensor(0.55) # for a 1:1 karyotype
-        self.min_vaf = torch.tensor(0.01)
+        self.min_vaf = torch.tensor(0.009)
 
         # phi_beta
         self.phi_beta_L = torch.tensor(0.15)
@@ -379,14 +396,14 @@ class mobster_MV():
         self.k_beta_L = torch.tensor(90.)
         self.k_beta_init = torch.tensor(200.) # which will be 90+200
         # self.k_beta_std = torch.tensor(100.)
-        self.k_beta_mean = torch.tensor(300.)
+        self.k_beta_mean = torch.tensor(200.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
-        self.alpha_pareto_mean = torch.tensor(1.1)
-        self.alpha_pareto_std = torch.tensor(0.5)
+        self.alpha_pareto_mean = torch.tensor(1.)
+        self.alpha_pareto_std = torch.tensor(0.1)
         self.alpha_factor = torch.tensor(2.)
-        self.alpha_pareto_init = torch.tensor(1.1)
+        self.alpha_pareto_init = torch.tensor(1.5)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
 
@@ -394,7 +411,7 @@ class mobster_MV():
         self.pareto_L = self.min_vaf
         self.pareto_H = self.max_vaf
 
-        self.temperature = 0.3
+        self.temperature = 0.2
 
 
     def model(self):
@@ -776,6 +793,8 @@ class mobster_MV():
         DP_S1 = self.DP[:,0]
         DP_S2 = self.DP[:,1]
 
+        weights = self.params["weights_param"].detach().numpy()
+        print("Weights: ", weights)
         unique_labels = np.unique(self.params["cluster_assignments"].detach().numpy())
         labels = self.params["cluster_assignments"].detach().numpy()
         cmap = cm.get_cmap('tab20')
@@ -787,7 +806,8 @@ class mobster_MV():
         plt.ylim([0,1])
         colors = [color_mapping[label] for label in labels]
         sc = plt.scatter(NV_S1/DP_S1, NV_S2/DP_S2, c=colors, cmap = 'Set3') # tab10
-        handles = [plt.Line2D([0], [0], marker='o', color='w', label=label,
+        
+        handles = [plt.Line2D([0], [0], marker='o', color='w', label=f"{label} (\u03C0 = {weights[label]:.3f})",
                         markerfacecolor=color_mapping[label], markersize=10) 
             for label in unique_labels]
         plt.legend(handles=handles)

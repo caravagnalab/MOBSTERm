@@ -11,27 +11,167 @@ import torch
 import seaborn as sns
 
 import matplotlib.pyplot as plt
-# plt.style.use('ggplot')
 from sklearn.metrics.cluster import normalized_mutual_info_score
 
 from utils.plot_functions import *
 from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
 
+import os
 
-NV_r = pd.read_csv("./rRACES_data/NV2.csv")
-DP_r = pd.read_csv("./rRACES_data/DP2.csv")
-# # NV_r = pd.read_csv("./rRACES_data/NV_long.csv")
-# # DP_r = pd.read_csv("./rRACES_data/DP_long.csv")
+
+data = pd.read_csv("./data/spn04_new.csv")
+# DP_r = pd.read_csv("./data/rRACES_data/DP2.csv")
+# NV_r = pd.read_csv("./data/rRACES_data/NV_long.csv")
+# DP_r = pd.read_csv("./data/rRACES_data/DP_long.csv")
+
+NV_r = pd.read_csv("./data/rRACES_data/NV_spn04.csv")
+DP_r = pd.read_csv("./data/rRACES_data/DP_spn04.csv")
+
+
+# NV_1 = torch.tensor(data['A.occurrences'].to_numpy())
+# NV_2 = torch.tensor(data['B.occurrences'].to_numpy())
+
+# DP_1 = torch.tensor(data['A.coverage'].to_numpy())
+# DP_2 = torch.tensor(data['B.coverage'].to_numpy())
+
+
+# NV = torch.stack((NV_1, NV_2), dim=1)
+# DP = torch.stack((DP_1, DP_2), dim=1)
 
 NV = torch.tensor(NV_r.to_numpy())
 DP = torch.tensor(DP_r.to_numpy())
+ylim = 2000
+# data_folder = 'rRACES_long_015'
+data_folder = 'rRACES_spn'
 
-ylim = 20
-data_folder = 'rRACES_prova'
+# Replace zeros with a large value that will not be considered as minimum
+vaf = NV[:,0]/DP[:,0]
+copy_vaf = torch.clone(vaf)
+masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+# Find the minimum value excluding zeros
+min_value = torch.min(masked_tensor)
+print(min_value)
+
+# Replace zeros with a large value that will not be considered as minimum
+vaf = NV[:,1]/DP[:,1]
+copy_vaf = torch.clone(vaf)
+masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+# Find the minimum value excluding zeros
+min_value = torch.min(masked_tensor)
+print(min_value)
+
+
+folder_path = f"plots/{data_folder}"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
+folder_path = f"plots/{data_folder}/final_analysis"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
+
+folder_path = f"saved_objects/{data_folder}"
+# Create the directory if it does not exist
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+    print(f"Folder '{folder_path}' created!")
+else:
+    print(f"Folder '{folder_path}' already exists.")
+
+
 
 print("Original NV data shape", NV.shape)
 print("Original DP data shape", DP.shape)
+# ------------------------- #
+"""
+N1 = 300
+N2 = 300
+N3 = 300
+N4 = 300
+N5 = 300
+N6 = 200
+seed = 123
+# Component 1
+phi_beta_x = 0.5
+k_beta_x = 300
+phi_beta_y = 0.5
+k_beta_y= 300
+n1=100
+NV1, DP1 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n1, N=N1, seed=seed)
+
+
+# Component 2
+phi_beta_x = 0.5
+k_beta_x = 300
+phi_beta_y = 1e-10
+k_beta_y= 300
+n2=100
+NV2, DP2 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n2, N=N2, seed=seed)
+NV2[:,1] = torch.tensor(0, dtype=NV2.dtype)
+NV = torch.concat((NV1,NV2))
+DP = torch.concat((DP1,DP2))
+
+# Component 3
+phi_beta_x = 0.15
+k_beta_x = 300
+phi_beta_y = 1e-10
+k_beta_y= 300
+n3=100
+NV3, DP3 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n3, N=N3, seed=seed)
+NV3[:,1] = torch.tensor(0, dtype=NV3.dtype)
+NV = torch.concat((NV,NV3))
+DP = torch.concat((DP,DP3))
+
+
+# Component 4
+phi_beta_x = 1e-10
+k_beta_x = 300
+phi_beta_y = 0.4
+k_beta_y= 150
+n4=100
+NV4, DP4 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n4, N=N4, seed=seed)
+NV4[:,0] = torch.tensor(0, dtype=NV4.dtype)
+NV = torch.concat((NV,NV4))
+DP = torch.concat((DP,DP4))
+
+
+# Component 5
+L_pareto = 0.01
+H_pareto = 0.5
+alpha_pareto = 1.5
+phi_beta = 1e-10
+k_beta = 300
+n5=100
+NV5, DP5 = pareto_binomial_component(alpha=alpha_pareto, L=L_pareto, H=H_pareto, phi_beta = phi_beta, k_beta = k_beta, n=n5, N=N5,exchanged = False, seed = seed)
+NV5[:,1] = torch.tensor(0, dtype=NV1.dtype)
+NV = torch.concat((NV,NV5))
+DP = torch.concat((DP,DP5))
+print(NV.shape)
+print(DP.shape)
+
+
+# Component 6
+alpha_pareto = 1.5
+phi_beta = 1e-10
+k_beta = 300
+n6=100
+NV6, DP6 = pareto_binomial_component(alpha=alpha_pareto, L=L_pareto, H=H_pareto, phi_beta = phi_beta, k_beta = k_beta, n=n5, N=N5, exchanged = True, seed = seed)
+NV6[:,0] = torch.tensor(0, dtype=NV6.dtype)
+NV = torch.concat((NV,NV6))
+DP = torch.concat((DP,DP6))
+ """
+# --------------------------#
 
 # Plot the dataset
 plt.xlim([0,1])
@@ -59,8 +199,8 @@ plt.savefig(f'plots/{data_folder}/marginals.png')
 
 save = True
 seed_list = [40,41,42]
-K_list = [2,3,4,5,6,7,8]
-# best_K, best_seed = model_mobster_mv.fit(NV, DP, num_iter = 2500, K = K_list, seed = seed_list, lr = 0.005, savefig = save, data_folder = data_folder)
+K_list = [2,3,4,5,6]
+best_K, best_seed = model_mobster_mv.fit(NV, DP, num_iter = 3000, K = K_list, seed = seed_list, lr = 0.005, savefig = save, data_folder = data_folder)
 
 # Restore saved objects
 loaded_list = []
@@ -191,29 +331,3 @@ plt.ylabel("ICL")
 plt.plot(K_list, icl_list)
 plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K.png")
 plt.close()
-
-"""
-plt.figure()
-plt.title("Likelihood over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("Likelihood")
-plt.plot(K_list, lk_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/likelihood_over_K_sampling_p.png")
-plt.close()
-
-plt.figure()
-plt.title("BIC over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("BIC")
-plt.plot(K_list, bic_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/bic_over_K_sampling_p.png")
-plt.close()
-
-plt.figure()
-plt.title("ICL over K (sampling p)")
-plt.xlabel("K")
-plt.ylabel("ICL")
-plt.plot(K_list, icl_sampling_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K_sampling_p.png")
-plt.close()
-"""

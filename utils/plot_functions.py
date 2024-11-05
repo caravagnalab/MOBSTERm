@@ -86,7 +86,7 @@ def plot_paretos(mb, savefig = False, data_folder = None):
         fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (10,mb.K*1))      
+        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (18,mb.K*1))      
     plt.suptitle(f"Pareto with K={mb.K}, seed={mb.seed}", fontsize=14)
     fig.tight_layout()
     x = np.arange(0,0.5,0.001)
@@ -112,7 +112,7 @@ def plot_betas(mb, savefig = False, data_folder = None):
         fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (10,mb.K*1))   
+        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (18,mb.K*1))   
     plt.suptitle(f"Beta with K={mb.K}, seed={mb.seed}", fontsize=14)
     fig.tight_layout()
     x = np.arange(0,1,0.001)
