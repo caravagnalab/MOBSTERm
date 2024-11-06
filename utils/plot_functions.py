@@ -6,7 +6,7 @@ import torch
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from scipy.stats import binom, beta, pareto
+from scipy.stats import beta, pareto
 from utils.BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.cm as cm
@@ -49,25 +49,20 @@ def plot_deltas(mb, savefig = False, data_folder = None):
     # plt.show()
     # plt.close()
 
-def plot_responsib(mb, which, savefig = False, data_folder = None):
-    if which == 'integr':
-        if torch.is_tensor(mb.params['responsib']):
-            resp = mb.params['responsib'].detach().numpy()
-        else:
-            resp = np.array(mb.params['responsib'])
+def plot_responsib(mb, savefig = False, data_folder = None):
+    
+    if torch.is_tensor(mb.params['responsib']):
+        resp = mb.params['responsib'].detach().numpy()
     else:
-        if torch.is_tensor(mb.params['responsib_sampling_p']):
-            resp = mb.params['responsib_sampling_p'].detach().numpy()
-        else:
-            resp = np.array(mb.params['responsib_sampling_p'])
-
+        resp = np.array(mb.params['responsib'])
+    
     fig, ax = plt.subplots(nrows=1, ncols=1)
-    plt.suptitle(f"Responsibilities with K={mb.K}, seed={mb.seed} ({which})", fontsize = 14)
+    plt.suptitle(f"Responsibilities with K={mb.K}, seed={mb.seed}", fontsize = 14)
     fig.tight_layout()
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
     seed = mb.seed
     if savefig:
-        plt.savefig(f"plots/{data_folder}/responsibilities_K_{mb.K}_seed_{seed}_{which}.png")
+        plt.savefig(f"plots/{data_folder}/responsibilities_K_{mb.K}_seed_{seed}.png")
     # plt.show()
     # plt.close()
 
@@ -130,7 +125,7 @@ def plot_betas(mb, savefig = False, data_folder = None):
     # plt.show()
     # plt.close()
 
-def plot_marginals(mb, which = 'integr', savefig = False, data_folder = None):
+def plot_marginals(mb,  savefig = False, data_folder = None):
     delta = mb.params["delta_param"]  # K x D x 2
     if not torch.is_tensor(delta):
         delta = torch.tensor(delta)
@@ -165,18 +160,12 @@ def plot_marginals(mb, which = 'integr', savefig = False, data_folder = None):
     else:
         labels = np.array(labels)
 
-    if which == 'integr':
-        labels = mb.params['cluster_assignments']
-        if torch.is_tensor(labels):
-            labels = labels.detach().numpy()
-        else:
-            labels = np.array(labels)
+    
+    labels = mb.params['cluster_assignments']
+    if torch.is_tensor(labels):
+        labels = labels.detach().numpy()
     else:
-        labels = mb.params['cluster_assignments_sampling_p']
-        if torch.is_tensor(labels):
-            labels = labels.detach().numpy()
-        else:
-            labels = np.array(labels)
+        labels = np.array(labels)
 
     # For each sample I want to plot all the clusters separately.
     # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
@@ -187,7 +176,7 @@ def plot_marginals(mb, which = 'integr', savefig = False, data_folder = None):
         fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, mb.K*3))
     if mb.K == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
-    plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed} ({which})",fontsize=14)
+    plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
     x = np.linspace(0.001, 1, 1000)
     for k in range(mb.K):
         for d in range(mb.NV.shape[1]):
@@ -217,7 +206,7 @@ def plot_marginals(mb, which = 'integr', savefig = False, data_folder = None):
             axes[k,d].set_xlim([0,1])
             plt.tight_layout()
     if savefig:
-        plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}_{which}.png")
+        plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
     # plt.show()
     # plt.close()
 
