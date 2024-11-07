@@ -9,7 +9,15 @@ class BoundedPareto(Rejector):
         self.upper_limit = upper_limit
 
         def log_prob_accept(x):
-            return (x <= upper_limit).type_as(x).log()
+            """
+            The result of ((x >= scale) & (x <= upper_limit)).type_as(x) is a tensor of 0s and 1s. 
+            Taking the log of this tensor gives:
+            - log(1) = 0 (for values x <= upper_limit or x>= lower_limit),
+            - log(0) = -inf (otherwise).
+            """
+            # return (x <= upper_limit).type_as(x).log()
+            return ((x >= scale) & (x <= upper_limit)).type_as(x).log()
+        
 
         # log_scale = torch.Tensor(alpha) * torch.log(torch.Tensor([scale / upper_limit]))
         log_scale = 0

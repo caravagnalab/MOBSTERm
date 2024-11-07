@@ -45,7 +45,6 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
     best_K = torch.tensor(float('inf'))
     best_total_seed = torch.tensor(float('inf'))
     mb_list = []
-    # best_seed = torch.tensor(float('inf'))
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)} is available.")
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -57,7 +56,6 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
         curr_mb = []
         list_to_save = []
         min_bic_seed = torch.tensor(float('inf'))
-        best_seed = 0
         if curr_k != 0:
             # Fai ciclo con 4/5 seed diversi e prendi bic minore
             for curr_seed in seed:
@@ -73,7 +71,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
                 if curr_mb[j].final_dict['bic'] <= min_bic_seed:
                     min_bic_seed = curr_mb[j].final_dict['bic']
                     mb_best_seed = curr_mb[j]
-                    best_seed = curr_seed
+                    
                 j+=1
             if savefig:
                 filename = f'saved_objects/{data_folder}/K_{curr_k}.txt'
@@ -91,20 +89,15 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
             
-            if savefig:
-                with PdfPages(f'plots/{data_folder}/final_analysis/K_{curr_k}_seed_{best_seed}.pdf') as pdf:
-                    for fig_num in plt.get_fignums():
-                        pdf.savefig(plt.figure(fig_num))
-                        plt.close(plt.figure(fig_num))
-            # mb_list.append(mb_best_seed)
+            mb_list.append(mb_best_seed)
             if mb_best_seed.final_dict['bic'] <= min_bic:
                 min_bic = mb_best_seed.final_dict['bic']
                 best_K = mb_best_seed.K
                 best_total_seed = mb_best_seed.seed
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
     
-    # return mb_list, best_K, best_total_seed
-    return best_K, best_total_seed
+    return mb_list, best_K, best_total_seed
+    # return best_K, best_total_seed
 
 
 class mobster_MV():
@@ -207,7 +200,7 @@ class mobster_MV():
 
         kappas = [1 / variance if variance > 0 else np.inf for variance in variances]
         self.init_kappas = torch.tensor(np.tile(kappas, (self.NV.shape[1], 1)).T)
-        """"""
+        """
         # Print kmeans result
         plt.figure()
         sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = best_cluster, cmap = 'Set3')
@@ -220,8 +213,8 @@ class mobster_MV():
             plt.savefig(f"plots/{self.data_folder}/kmeans_K_{self.K}_seed_{self.seed}.png")
         plt.show()
         print("kmeans_centers: ", self.kmeans_centers)
-        # plt.close()
-
+        plt.close()
+        """
 
     def initialize_delta(self, phi_beta, k_beta, alpha):
         a_beta = self.get_a_beta(phi_beta, k_beta)
@@ -343,7 +336,6 @@ class mobster_MV():
         Function to compute the minimum vaf value (different from 0) found in 
         each dimension
         """
-        
         vaf = self.NV/self.DP
         copy_vaf = torch.clone(vaf)
         # Replace zeros with a large value that will not be considered as minimum (i.e. 1)
@@ -352,12 +344,13 @@ class mobster_MV():
         # Find the minimum value for each column excluding zeros
         min_values, _ = torch.min(masked_tensor, dim=0)
         min_values = min_values.repeat(self.K, 1)
-        return min_values
-
+        min_vaf = torch.min(min_values)
+        print("Minimum detected VAF:", min_vaf)
+        return min_vaf
 
     def set_prior_parameters(self):
         self.max_vaf = torch.tensor(0.55) # for a 1:1 karyotype
-        self.min_vaf = torch.tensor(0.009)
+        self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
         self.phi_beta_L = torch.tensor(0.15)
@@ -374,7 +367,7 @@ class mobster_MV():
         # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.)
         self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_factor = torch.tensor(2.)
+        self.alpha_factor = torch.tensor(1.)
         self.alpha_pareto_init = torch.tensor(1.5)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
@@ -709,8 +702,8 @@ class mobster_MV():
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
-        # plt.show()
-        # plt.close()
+        plt.show()
+        plt.close()
 
 
     def plot_grad_norms(self, gradient_norms):
@@ -724,8 +717,8 @@ class mobster_MV():
         plt.title(f"Gradient norms during SVI (K = {self.K}, seed = {self.seed})")
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/gradient_norms_K_{self.K}_seed_{self.seed}.png")
-        # plt.show()
-        # plt.close()
+        plt.show()
+        plt.close()
 
 
     def plot(self):
