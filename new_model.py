@@ -135,7 +135,8 @@ class mobster_MV():
         pyro.set_rng_seed(self.seed)
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
-        self.set_prior_parameters()
+        if NV is not None:
+            self.set_prior_parameters()
 
     def compute_kmeans_centers(self):
         best_inertia = float('inf')
@@ -158,6 +159,7 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         self.kmeans_centers_no_noise = best_centers.clone()
+        # print("Kmeans centers:", self.kmeans_centers_no_noise)
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= 1] = 1 - 1e-10
@@ -176,6 +178,8 @@ class mobster_MV():
         # best_centers[best_centers <= 0] = 1 - 0.999
         best_centers[best_centers >= 1] = 0.999
         self.kmeans_centers = best_centers
+        # self.kmeans_centers = self.kmeans_centers_no_noise
+        # print(self.kmeans_centers)
 
         cluster_sizes = np.bincount(best_labels.astype(int), minlength=self.K)
         weights_kmeans = cluster_sizes.reshape(-1)/np.sum(cluster_sizes.reshape(-1))
@@ -202,9 +206,10 @@ class mobster_MV():
         kappas = [1 / variance if variance > 0 else np.inf for variance in variances]
         self.init_kappas = torch.tensor(np.tile(kappas, (self.NV.shape[1], 1)).T)
         """
+        """
         # Print kmeans result
         plt.figure()
-        sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = best_cluster, cmap = 'Set3')
+        sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = best_labels)
         legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
         plt.gca().add_artist(legend1)
         plt.title(f"Kmeans init (K = {self.K}, seed = {self.seed})")
@@ -215,6 +220,7 @@ class mobster_MV():
         plt.show()
         # print("kmeans_centers: ", self.kmeans_centers)
         plt.close()
+        """
         
 
     def initialize_delta(self, phi_beta, k_beta, alpha):
@@ -225,12 +231,12 @@ class mobster_MV():
         # Otherwise the likelihood is infinite
         pareto_lk = BoundedPareto(self.pareto_L, alpha, 1).log_prob(self.kmeans_centers_no_noise)
 
-        exp_lk = dist.Exponential(self.rate_expon).log_prob(self.kmeans_centers_no_noise)
+        exp_lk = dist.Beta(self.a_beta_zeros, self.b_beta_zeros).log_prob(self.kmeans_centers_no_noise)
 
-        print(self.kmeans_centers_no_noise)
-        print("Pareto lk", pareto_lk)
-        print("Beta lk", beta_lk)
-        print("Exp lk", exp_lk)
+        # print(self.kmeans_centers_no_noise)
+        # print("Pareto lk", pareto_lk)
+        # print("Beta lk", beta_lk)
+        # print("Exp lk", exp_lk)
         # kmeans_centers: KxD
         K = self.K
         D = self.NV.shape[1]
@@ -238,9 +244,9 @@ class mobster_MV():
         for i in range(K):
             for j in range(D):
                 values = torch.tensor([pareto_lk[i,j].item(), beta_lk[i,j].item(), exp_lk[i,j].item()])
-                print(values)
+                # print(values)
                 sorted_indices = torch.argsort(values, descending=True) # list of indices ex. 0,2,1
-                print(sorted_indices)
+                # print(sorted_indices)
 
                 init_delta[i,j,sorted_indices[0]] = 0.6 # this can be either pareto, beta or exp
                 init_delta[i,j,sorted_indices[1]] = 0.3
@@ -282,19 +288,19 @@ class mobster_MV():
         betabin = dist.BetaBinomial(a_beta, b_beta, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return betabin # simply does log(weights) + log(density)
     
-    def expon_lk(self, d):
+    def zeros_lk(self, d):
         """
-        Compute exponential likelihood for a single dimension of a single cluster.
+        Compute beta-binomial likelihood for a single dimension of a single cluster, for values at 0.
         """
-        exp = dist.Exponential(self.rate_expon).log_prob(self.NV[:,d])
+        exp = dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return exp # simply does log(weights) + log(density)
 
     def pareto_binomial_pmf(self, NV, DP, alpha):
-        integration_points=2000
+        integration_points=5000
         # Generate integration points across all rows at once
         t = torch.linspace(self.pareto_L, self.pareto_H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
-        NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], NV.shape[1], 1)
-        DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], DP.shape[1], 1)
+        NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], 1)
+        DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], 1)
         binom_vals = dist.Binomial(total_count=DP_expanded, probs=t).log_prob(NV_expanded).exp()
         pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()  # Shape (1, integration_points)
         integrand = binom_vals * pareto_vals
@@ -308,19 +314,62 @@ class mobster_MV():
         paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
         return paretobin # tensor of len N (if D = 1, only N)
 
-
+    
     def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
         # delta -> D x 2
         delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # NxD tensor
         delta_beta = torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # N x D tensor
-        delta_expon = torch.log(delta[:, 2]) + dist.Exponential(self.rate_expon).log_prob(self.NV)
+        delta_zeros = torch.log(delta[:, 2]) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP).log_prob(self.NV)
         
-        # Stack ctreates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
-        return self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_expon), dim=0)) # N
+        # zeros_NV = np.where(self.NV == 0.)
+        # print("Pareto", delta_pareto[zeros_NV])
+        # print("Beta", delta_beta[zeros_NV])
+        # print("Expon", delta_expon[zeros_NV])
 
+        # Stack creates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
+        return self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0)) # N
+    """
+    def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
+        
+        zeros_NV = (self.NV == 0)   # N x D
+        nonzeros_NV = ~zeros_NV    # N x D
 
+        delta_pareto = torch.full_like(self.NV, -1e20)  # Default to a very small value
+        delta_beta = torch.full_like(self.NV, -1e20)
+        delta_expon = torch.full_like(self.NV, -1e20)
+
+        # exponential lk for NV == 0
+        delta_expon = torch.where(
+            zeros_NV,
+            torch.log(delta[:, 2]) + dist.Exponential(self.rate_expon).log_prob(self.NV),
+            # torch.log(delta[:, 2]) + dist.Delta(torch.tensor(0)).log_prob(self.NV),
+            delta_expon,
+        )
+
+        # Pareto and Beta lks for NV != 0
+        delta_pareto = torch.where(
+            nonzeros_NV,
+            torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs=probs_pareto).log_prob(self.NV),
+            delta_pareto,
+        )
+        
+
+        delta_beta = torch.where(
+            nonzeros_NV,
+            torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV),
+            delta_beta,
+        )
+
+        stacked_components = torch.stack((delta_pareto, delta_beta, delta_expon), dim=0)  # (3, N, D)
+
+        log_probs = self.log_sum_exp(stacked_components)  # N x D
+
+        return log_probs
+    """
+
+    
     def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
-        # delta -> D x 2
+        # delta -> D x 3
         log_lik = []
         for d in range(delta.shape[0]): # range over samples
             if ((delta[d, 0] > delta[d, 1]) and (delta[d, 0] > delta[d, 2])): # pareto
@@ -330,10 +379,9 @@ class mobster_MV():
                 # log_lik.append(torch.log(delta[d, 1]) + self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
                 log_lik.append(self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
             else:
-                expon_lk = self.expon_lk(d)
-                log_lik.append(expon_lk)
-
-        stack_tensors = torch.stack((log_lik[0], log_lik[1]), dim=1) # combine together the tensors of dim 0 and 1 to create a N x D tensor
+                zeros_lk = self.zeros_lk(d)
+                log_lik.append(zeros_lk)
+        stack_tensors = torch.stack(log_lik, dim=1)
         # Non mi serve log sum exp perchè non devo più sommare sui delta_j
         return stack_tensors # N x D
 
@@ -386,17 +434,20 @@ class mobster_MV():
         # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.)
         self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_factor = torch.tensor(2.)
+        self.alpha_factor = torch.tensor(1.)
         self.alpha_pareto_init = torch.tensor(1.5)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
 
         # Bounded pareto
         self.pareto_L = self.min_vaf
+        print("self.pareto_L", self.pareto_L)
         self.pareto_H = self.max_vaf
+        self.probs_pareto_init = torch.tensor(0.09)
 
-        # Approximated Dirac delta (bery narrow Beta around 0)
-        self.rate_expon = torch.tensor(8000.)
+        # Approximated Dirac delta (very narrow Beta around 0)
+        self.a_beta_zeros = torch.tensor(1e-3)
+        self.b_beta_zeros = torch.tensor(1e3)
 
         self.temperature = 0.2
 
@@ -427,7 +478,7 @@ class mobster_MV():
 
                 alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), self.alpha_pareto_std))
                 probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
-                
+                # print(probs_pareto)
         # Data generation
         with pyro.plate("plate_data", len(NV)):
             # .sum() sums over the data because we have a log-likelihood
@@ -457,11 +508,11 @@ class mobster_MV():
         if site_name == "alpha_pareto":
             param = torch.ones((K,D))*self.alpha_pareto_init
         if site_name == "probs_pareto":
-            param = torch.ones((K,D))*0.2
-        if site_name == "w":
-            param = self.init_delta
-            param[param<0.5] = 1e-10
-            param[param>=0.5] = 1. - 1e-10
+            param = torch.ones((K,D))*self.probs_pareto_init
+        # if site_name == "w":
+        #     param = self.init_delta
+        #     param[param<0.5] = 1e-10
+        #     param[param>=0.5] = 1. - 1e-10
         return param
 
 
@@ -485,9 +536,12 @@ class mobster_MV():
         alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.interval(self.min_alpha, self.max_alpha))        
 
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
+        # phi_beta_param = pyro.param("phi_beta_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
 
-        probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.pareto_L, self.pareto_H))
+        probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*self.probs_pareto_init, constraint=constraints.interval(self.pareto_L, self.pareto_H))
+        
+        # probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D)*self.probs_pareto_init, constraint=constraints.interval(self.pareto_L, 0.15))
         
         delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
         # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(3)).sample([K, D]).reshape(K, D, 3), constraint=constraints.simplex)
@@ -585,6 +639,10 @@ class mobster_MV():
         np.random.seed(self.seed)
         self.cluster_initialization()
         # NV, DP = self.NV, self.DP
+        initial_temperature = torch.tensor(1)
+        # final_temperature = 0.01
+        # decr_rate = 0.99 
+        # self.temperature = initial_temperature
 
         # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
         svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
@@ -604,13 +662,15 @@ class mobster_MV():
         # old_par = self.get_parameters() # Save current values of the parameters in old_params
         # old_par.pop('weights_param')
 
-        initial_temperature = 1.0
-        final_temperature = 0.01
-        decr_rate = 0.99 
+        
 
         for i in range(num_iter):
             # curr_temperature = max(final_temperature, initial_temperature * (decr_rate ** i))
-            # self.temperature = torch.tensor([curr_temperature])
+            # if i != 0:
+            #     curr_temperature = initial_temperature/torch.log(torch.tensor(i + 0.1))
+            #     self.temperature = torch.tensor([curr_temperature])
+            # else:
+            #     self.temperature = initial_temperature
 
             loss = svi.step()
             self.losses.append(loss)
@@ -638,7 +698,9 @@ class mobster_MV():
             #     break
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
-                print(params['delta_param'])
+                # print("temperature", self.temperature)
+                print("delta_param", params['delta_param'])
+                # print("w_param", params['w_param'])
 
         self.params = self.get_parameters()
 
@@ -673,7 +735,8 @@ class mobster_MV():
         Compute likelihood with learnt parameters
         """
         alpha = self.params["alpha_pareto_param"] * self.alpha_factor
-        delta = self.params["delta_param"]  # K x D x 2
+        # delta = self.params["delta_param"]  # K x D x 2
+        delta = self.params["w_param"]  # K x D x 2
         
         phi_beta = self.params["phi_beta_param"]
         k_beta = self.params["k_beta_param"]

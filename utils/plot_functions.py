@@ -372,7 +372,7 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
                 axes[k,d].legend()
             else:
                 # print("Dirac")
-                pdf = expon.pdf(x, scale = 1/mb.rate_expon) # delta_approx
+                pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
                 axes[k,d].legend()
 
