@@ -69,7 +69,7 @@ def plot_deltas_new(mb, savefig = False, data_folder = None):
         ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
 
         # Set x-tick labels
-        ax[k].set_xticklabels(["Pareto", "Beta", "Dirac"], rotation=0)
+        ax[k].set_xticklabels(["Pareto", "Beta", "Zeros"], rotation=0)
 
         # Setting x and y labels for the subplot
         ax[k].set(xlabel="", ylabel="Sample")
@@ -373,7 +373,7 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
             else:
                 # print("Dirac")
                 pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
-                axes[k,d].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
                 axes[k,d].legend()
 
             data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
