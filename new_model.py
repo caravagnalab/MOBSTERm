@@ -514,7 +514,7 @@ class mobster_MV():
         #     lambda: torch.where(self.init_delta < 0.5, torch.tensor(1e-10), torch.tensor(1 - 1e-10)),
         #     constraint=constraints.simplex
         # )
-        w_param = pyro.param("w_param", lambda: dist.Dirichlet(torch.ones(3)).sample([K, D]).reshape(K, D, 3), constraint=constraints.simplex)
+        w_param = pyro.param("w_param", lambda: self.init_delta, constraint=constraints.simplex)
 
         
         with pyro.plate("plate_dims", D):
@@ -560,10 +560,18 @@ class mobster_MV():
         old = self.flatten_params(old_par)
         new = self.flatten_params(new_par)
         diff_mix = np.abs(old - new)
-        if np.all(diff_mix < old*0.1):
+        if np.all(diff_mix < old*0.01):
+        # if np.all(diff_mix < 0.001):
             return check_conv + 1 
         return 0
 
+    def get_parameters_stopping(self, params):
+        par = {'phi_beta_param': params["phi_beta_param"],
+               'k_beta_param': params["k_beta_param"],
+                'alpha_pareto_param': params['alpha_pareto_param'],
+                'weights_param': params['weights_param'],
+                'delta_param': params['delta_param']} 
+        return par
 
     # Model selection
     def compute_BIC(self, params, final_lk):
@@ -606,9 +614,10 @@ class mobster_MV():
         # final_temperature = 0.01
         # decr_rate = 0.99 
         # self.temperature = initial_temperature
+        elbo = pyro.infer.TraceGraph_ELBO()
 
         # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
-        svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
+        svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), elbo)
 
         svi.step()
         gradient_norms = defaultdict(list)
@@ -619,28 +628,23 @@ class mobster_MV():
         
         self.losses = []
         self.lks = []
+        self.pi_list = []
+        self.delta_list = []
         i = 0
-        min_iter = 100
+        conv_iter = 100
         check_conv = 0
-        old_par = self.get_parameters() # Save current values of the parameters in old_params
-
-        
+        params = self.get_parameters()
+        min_iter = 200
+               
 
         for i in range(num_iter):
-            # curr_temperature = max(final_temperature, initial_temperature * (decr_rate ** i))
-            # if i != 0:
-            #     curr_temperature = initial_temperature/torch.log(torch.tensor(i + 0.1))
-            #     self.temperature = torch.tensor([curr_temperature])
-            # else:
-            #     self.temperature = initial_temperature
+            if i >= min_iter:
+                old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
 
             loss = svi.step()
             self.losses.append(loss)
 
-            # Save likelihood values
             params = self.get_parameters()
-            # if i == 0:
-            #     print("delta_param", params["delta_param"])
             
             a_beta = self.get_a_beta(params["phi_beta_param"], params["k_beta_param"])
             b_beta = self.get_b_beta(params["phi_beta_param"], params["k_beta_param"])
@@ -649,23 +653,23 @@ class mobster_MV():
                                                    params["alpha_pareto_param"], a_beta, b_beta, 
                                                    params["weights_param"], params["delta_param"], which = 'inference')).sum()
 
+            # print(params['delta_param'])
             self.lks.append(lks.detach().numpy())
+            self.pi_list.append(params['weights_param'])
+            self.delta_list.append(params['delta_param'])
 
-            new_par = params.copy()
-            check_conv = self.stopping_criteria(old_par, new_par, check_conv)
-            
-            # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
-            if check_conv == min_iter:
-                break
+            if i >= min_iter:
+                new_par = self.get_parameters_stopping(params)
+                check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+                # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
+                if check_conv == conv_iter:
+                    break
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
-                # print("temperature", self.temperature)
-                # print("delta_param", params['delta_param'])
-                # print("w_param", params['w_param'])
 
         self.params = self.get_parameters()
 
-        self.plot_loss_lks()
+        self.plot_loss_lks_dist()
         self.plot_grad_norms(gradient_norms)
         
         final_lk = self.compute_posteriors()
@@ -724,19 +728,38 @@ class mobster_MV():
         
         return lks
 
+    def compute_euclidean_distance(self, t1, t2):
+        # Flatten tensors to vectors
+        t1_flat = t1.flatten()
+        t2_flat = t2.flatten()
+        return torch.norm(t1_flat - t2_flat).item()
+    
+    def compute_mixing_distances(self, vector):
+        distances = []
+        for i in range(1, len(vector)):
+            dist = self.compute_euclidean_distance(vector[i - 1], vector[i])
+            distances.append(dist)
+        return distances
 
-    def plot_loss_lks(self):
-        _, ax = plt.subplots(1, 2, figsize=(15, 5))
+    def plot_loss_lks_dist(self):
+        dist_pi = self.compute_mixing_distances(self.pi_list)
+        dist_delta = self.compute_mixing_distances(self.delta_list)
+        _, ax = plt.subplots(1, 3, figsize=(20, 5))
         ax[0].plot(self.losses)
         ax[0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
 
         ax[1].plot(self.lks)
         ax[1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
+
+        ax[2].plot(dist_pi)
+        ax[2].plot(dist_delta)
+        ax[2].set_title(f"Distances of mixing parameters between consecutive iterations")        
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
         plt.show()
         plt.close()
+
 
 
     def plot_grad_norms(self, gradient_norms):
