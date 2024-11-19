@@ -18,7 +18,7 @@ from utils.create_beta_pareto_dataset import *
 
 import os
 
-
+"""
 N1 = 500
 N2 = 500
 N3 = 500
@@ -96,7 +96,7 @@ NV6[:,0] = torch.tensor(0, dtype=NV6.dtype)
 NV6[np.where(NV6[:,1] == 0), 1] = torch.tensor(1, dtype=NV1.dtype)
 NV = torch.concat((NV,NV6))
 DP = torch.concat((DP,DP6))
-""""""
+"""
 
 # NV_r = pd.read_csv("./data/new_sim/NV_lesson.csv")
 # DP_r = pd.read_csv("./data/new_sim/DP_lesson.csv")
@@ -106,7 +106,7 @@ DP = torch.concat((DP,DP6))
 # idx = [1,2]
 # NV = NV[:,idx]
 # DP = DP[:,idx]
-"""
+
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
 NV1 = torch.tensor(data['Set7_55.NV'].to_numpy())
@@ -129,11 +129,11 @@ DP4 = torch.tensor(data['Set7_62.DP'].to_numpy()).view(NV1.shape[0], 1)
 
 NV = torch.cat((NV,NV4),dim=1)
 DP = torch.cat((DP,DP4),dim=1)
-"""
-ylim = 3000
+""""""
+# ylim = 3000
 
-# ylim = 1200
-data_folder = 'simulated_data_short'
+ylim = 1200
+data_folder = 'real_data_high_K_3'
 
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
@@ -198,10 +198,13 @@ plt.close()
 
 save = True
 seed_list = [40,41,42]
-# K_list = [9,10,11,12,13,14]
-
-K_list = [4,5,6,7,8]
-_, best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 1500, K = K_list, seed = seed_list, lr = 0.01, savefig = save, data_folder = data_folder)
+# K_list = [11,12,13,14,15,16,17]
+# K_list = [11,12,13,14]
+# K_list = [15,16,17]
+# K_list = [18,19,20,21]
+K_list = [20,21]
+# K_list = [4,5,6,7,8]
+_, best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 3500, K = K_list, seed = seed_list, lr = 0.01, savefig = save, data_folder = data_folder)
 
 # Restore saved objects
 loaded_list = []

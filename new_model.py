@@ -145,7 +145,7 @@ class mobster_MV():
         best_labels = None
         # Implement loop to choose the seed which produces a result with the lowest inertia
         
-        for seed in range(1, 16):
+        for seed in range(1, 10):
             kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init=2).fit((self.NV/self.DP).numpy())
             best_cluster = kmeans.labels_.copy()
             centers = torch.tensor(kmeans.cluster_centers_)
@@ -329,44 +329,6 @@ class mobster_MV():
 
         # Stack creates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
         return self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0)) # N
-    """
-    def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
-        
-        zeros_NV = (self.NV == 0)   # N x D
-        nonzeros_NV = ~zeros_NV    # N x D
-
-        delta_pareto = torch.full_like(self.NV, -1e20)  # Default to a very small value
-        delta_beta = torch.full_like(self.NV, -1e20)
-        delta_expon = torch.full_like(self.NV, -1e20)
-
-        # exponential lk for NV == 0
-        delta_expon = torch.where(
-            zeros_NV,
-            torch.log(delta[:, 2]) + dist.Exponential(self.rate_expon).log_prob(self.NV),
-            # torch.log(delta[:, 2]) + dist.Delta(torch.tensor(0)).log_prob(self.NV),
-            delta_expon,
-        )
-
-        # Pareto and Beta lks for NV != 0
-        delta_pareto = torch.where(
-            nonzeros_NV,
-            torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs=probs_pareto).log_prob(self.NV),
-            delta_pareto,
-        )
-        
-
-        delta_beta = torch.where(
-            nonzeros_NV,
-            torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV),
-            delta_beta,
-        )
-
-        stacked_components = torch.stack((delta_pareto, delta_beta, delta_expon), dim=0)  # (3, N, D)
-
-        log_probs = self.log_sum_exp(stacked_components)  # N x D
-
-        return log_probs
-    """
 
     
     def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
@@ -660,8 +622,7 @@ class mobster_MV():
         i = 0
         min_iter = 100
         check_conv = 0
-        # old_par = self.get_parameters() # Save current values of the parameters in old_params
-        # old_par.pop('weights_param')
+        old_par = self.get_parameters() # Save current values of the parameters in old_params
 
         
 
@@ -690,17 +651,16 @@ class mobster_MV():
 
             self.lks.append(lks.detach().numpy())
 
-            # new_par = params.copy()
-            # new_par.pop('weights_param')
-            # check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+            new_par = params.copy()
+            check_conv = self.stopping_criteria(old_par, new_par, check_conv)
             
             # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
-            # if check_conv == min_iter:
-            #     break
+            if check_conv == min_iter:
+                break
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
                 # print("temperature", self.temperature)
-                print("delta_param", params['delta_param'])
+                # print("delta_param", params['delta_param'])
                 # print("w_param", params['w_param'])
 
         self.params = self.get_parameters()
