@@ -380,7 +380,7 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
             # for i in np.unique(labels):
             axes[k,d].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))
             axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
-            axes[k,d].set_ylim([0,25])
+            # axes[k,d].set_ylim([0,25])
             axes[k,d].set_xlim([0,1])
             plt.tight_layout()
     if savefig:

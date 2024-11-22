@@ -69,8 +69,8 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
                         dict[key] = convert_to_list(value)#.detach().cpu().numpy()  # Convert tensor to lists
                 list_to_save.append(dict)
 
-                if curr_mb[j].final_dict['bic'] <= min_bic_seed:
-                    min_bic_seed = curr_mb[j].final_dict['bic']
+                if curr_mb[j].final_dict['icl'] <= min_bic_seed:
+                    min_bic_seed = curr_mb[j].final_dict['icl']
                     mb_best_seed = curr_mb[j]
                     
                 j+=1
@@ -91,8 +91,8 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
             plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
             
             mb_list.append(mb_best_seed)
-            if mb_best_seed.final_dict['bic'] <= min_bic:
-                min_bic = mb_best_seed.final_dict['bic']
+            if mb_best_seed.final_dict['icl'] <= min_bic:
+                min_bic = mb_best_seed.final_dict['icl']
                 best_K = mb_best_seed.K
                 best_total_seed = mb_best_seed.seed
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
@@ -557,11 +557,11 @@ class mobster_MV():
 
 
     def stopping_criteria(self, old_par, new_par, check_conv):#, e=0.01):
+        threshold = 0.01
         old = self.flatten_params(old_par)
         new = self.flatten_params(new_par)
-        diff_mix = np.abs(old - new)
-        if np.all(diff_mix < old*0.01):
-        # if np.all(diff_mix < 0.001):
+        diff_mix = np.abs(old - new) / np.abs(old)
+        if np.all(diff_mix < threshold):
             return check_conv + 1 
         return 0
 
@@ -572,6 +572,16 @@ class mobster_MV():
                 'weights_param': params['weights_param'],
                 'delta_param': params['delta_param']} 
         return par
+    
+    def loss_convergence(self):
+        threshold = 0.01
+        old = self.losses[-2]
+        curr = self.losses[-1]
+        diff = np.abs(old - curr) / np.abs(old)
+        if diff < threshold:
+            return True
+        else:
+            return False
 
     # Model selection
     def compute_BIC(self, params, final_lk):
@@ -661,8 +671,9 @@ class mobster_MV():
             if i >= min_iter:
                 new_par = self.get_parameters_stopping(params)
                 check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+                conv_loss = self.loss_convergence()
                 # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
-                if check_conv == conv_iter:
+                if check_conv == conv_iter and conv_loss == True:
                     break
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
@@ -700,8 +711,8 @@ class mobster_MV():
         Compute likelihood with learnt parameters
         """
         alpha = self.params["alpha_pareto_param"] * self.alpha_factor
-        # delta = self.params["delta_param"]  # K x D x 2
-        delta = self.params["w_param"]  # K x D x 2
+        delta = self.params["delta_param"]  # K x D x 2
+        # delta = self.params["w_param"]  # K x D x 2
         
         phi_beta = self.params["phi_beta_param"]
         k_beta = self.params["k_beta_param"]
@@ -747,13 +758,17 @@ class mobster_MV():
         _, ax = plt.subplots(1, 3, figsize=(20, 5))
         ax[0].plot(self.losses)
         ax[0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
+        ax[0].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
         ax[1].plot(self.lks)
         ax[1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
+        ax[1].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
-        ax[2].plot(dist_pi)
-        ax[2].plot(dist_delta)
-        ax[2].set_title(f"Distances of mixing parameters between consecutive iterations")        
+        ax[2].plot(dist_pi, label="$\pi$")
+        ax[2].plot(dist_delta, label="$\delta$")
+        ax[2].set_title(f"Distances of mixing parameters between consecutive iterations")  
+        ax[2].grid(True, color='gray', linestyle='-', linewidth=0.2)  
+        ax[2].legend()    
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
