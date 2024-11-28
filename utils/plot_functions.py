@@ -410,7 +410,7 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
                 data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
             # for i in np.unique(labels):
             if k in unique_labels:
-                axes[k, d].hist(data[labels == k], density=True, bins=30, alpha=1, color=color_mapping[k])
+                axes[k, d].hist(data[labels == k],  bins=30, alpha=1, color=color_mapping[k])
             else:
                 # Plot an empty histogram because we know there are no points in that k
                 axes[k, d].hist([], density=True, bins=30, alpha=1)

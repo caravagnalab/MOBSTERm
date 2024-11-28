@@ -314,16 +314,6 @@ class mobster_MV():
     def pareto_lk_integr(self, d, alpha):
         paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
         return paretobin # tensor of len N (if D = 1, only N)
-
-    def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
-        # delta -> D x 2
-        delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # NxD tensor
-        delta_beta = torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # N x D tensor
-        delta_zeros = torch.log(delta[:, 2]) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP).log_prob(self.NV)
-        
-        # Stack creates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
-        return self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0)) # N
-
     
     def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
         # delta -> D x 3
@@ -341,16 +331,67 @@ class mobster_MV():
         stack_tensors = torch.stack(log_lik, dim=1)
         # Non mi serve log sum exp perchè non devo più sommare sui delta_j
         return stack_tensors # N x D
+    
+    def log_beta_par_mix_inference_old(self, probs_pareto, delta, alpha, a_beta, b_beta):
+        # delta -> (D, 3)
+        # a_beta, b_beta, probs_pareto -> [D]
+        delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # N x D tensor
+        delta_beta = torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # N x D tensor
+        delta_zeros = torch.log(delta[:, 2]) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP).log_prob(self.NV) # N x D tensor
+        
+        assert delta_pareto.shape == (self.NV.shape[0],self.NV.shape[1])
+        assert delta_beta.shape == (self.NV.shape[0],self.NV.shape[1])
+        assert delta_zeros.shape == (self.NV.shape[0],self.NV.shape[1])
+        
+        # Stack creates a 3 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
+        log = self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0))
+        assert log.shape == (self.NV.shape[0],self.NV.shape[1])
+        
+        return  log # N x D
+    
+    def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
+        # delta -> (K, D, 3)
+        # a_beta, b_beta, probs_pareto -> (K, D)
 
+        expanded_DP = self.DP.unsqueeze(0)  # Shape: 1 x N x D
+        expanded_NV = self.NV.unsqueeze(0)  # Shape: 1 x N x D
+        
+        # delta[:, :, 0] (K, D) => I want it to be K x 1 x D => unsqueeze
+        delta_pareto = torch.log(delta[:, :, 0].unsqueeze(1)) + dist.Binomial(total_count=expanded_DP, probs = probs_pareto.unsqueeze(1)).log_prob(expanded_NV)  # K x N x D tensor
+        delta_beta = torch.log(delta[:, :, 1].unsqueeze(1)) + dist.BetaBinomial(a_beta.unsqueeze(1), b_beta.unsqueeze(1), total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
+        delta_zeros = torch.log(delta[:, :, 2].unsqueeze(1)) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
+        
+        # assert delta_pareto.shape == (self.NV.shape[0],self.NV.shape[1])
+        # assert delta_beta.shape == (self.NV.shape[0],self.NV.shape[1])
+        # assert delta_zeros.shape == (self.NV.shape[0],self.NV.shape[1])
+        
+        # Stack creates a 3 x K x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto, delta_beta and delta_zeros 
+        stacked = torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0) # 3 x K x N x D tensor
+        log = self.log_sum_exp(stacked) # apply log sum exp on first dimension => K x N x D tensor
+        
+        assert log.shape == (self.K, self.NV.shape[0],self.NV.shape[1])
+        
+        return  log # K x N x D
+    
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         
+        if which == 'inference':
+            log = self.log_beta_par_mix_inference(probs_pareto, delta, alpha, a_beta, b_beta) # K x N x D
+            log_sum = log.sum(axis=2)  # sums over the data dimensions (columns) => K x N tensor
+            log_weights = torch.log(weights).unsqueeze(1)  # Shape: (K, 1)
+            lk = log_weights + log_sum  # Broadcasting: (K, 1) + (K, N) → (K, N)
+        else:
+            for k in range(self.K):
+                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+        assert lk.shape == (self.K, len(self.NV))
+        """
         for k in range(self.K):
             if which == 'inference':
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_inference(probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
             else:
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
-
+        """
         return lk
 
 
@@ -420,10 +461,10 @@ class mobster_MV():
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
                 # Prior for the Beta-Pareto weights
-                # delta is a K x D x 2 torch tensor (K: num layers, D: rows per layer, 2: columns per layer)
+                # delta is a K x D x 3 torch tensor (K: num layers, D: rows per layer, 3: columns per layer)
                 delta = pyro.sample("delta", dist.Dirichlet(torch.ones(3)))
 
-                w = pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs=delta))
+                #w = pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs=delta))
                 
                 phi_beta = pyro.sample("phi_beta", dist.Uniform(self.phi_beta_L, self.phi_beta_H)) # 0.5 because we are considering a 1:1 karyotype
                 k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.k_beta_mean), self.k_beta_std))
@@ -437,7 +478,7 @@ class mobster_MV():
         # Data generation
         with pyro.plate("plate_data", len(NV)):
             # .sum() sums over the data because we have a log-likelihood
-            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_pareto, self.alpha_factor*alpha, a_beta, b_beta, weights, w, which = 'inference')).sum())
+            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_pareto, self.alpha_factor*alpha, a_beta, b_beta, weights, delta, which = 'inference')).sum())
 
 
     def get_a_beta(self, phi, kappa):
@@ -506,7 +547,7 @@ class mobster_MV():
         #     lambda: torch.where(self.init_delta < 0.5, torch.tensor(1e-10), torch.tensor(1 - 1e-10)),
         #     constraint=constraints.simplex
         # )
-        w_param = pyro.param("w_param", lambda: self.init_delta, constraint=constraints.simplex)
+        #w_param = pyro.param("w_param", lambda: self.init_delta, constraint=constraints.simplex)
 
         
         with pyro.plate("plate_dims", D):
@@ -520,7 +561,7 @@ class mobster_MV():
                 pyro.sample("probs_pareto", dist.Delta(probs_pareto_param))
                 pyro.sample("delta", dist.Delta(delta_param).to_event(1))
                 
-                pyro.sample("w", dist.Delta(w_param).to_event(1))
+                #pyro.sample("w", dist.Delta(w_param).to_event(1))
 
                 # pyro.sample("w", dist.RelaxedOneHotCategorical(torch.tensor([self.temperature]), probs = delta_param))
 
