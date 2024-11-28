@@ -10,3 +10,7 @@ test_generative/
 saved_objects/
 
 *.out
+._*
+
+.DS_Store
+._.DS_Store
