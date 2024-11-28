@@ -354,6 +354,10 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
     plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
     x = np.linspace(0.001, 1, 1000)
+
+    unique_labels = np.unique(labels)
+    cmap = cm.get_cmap('tab20')
+    color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     for k in range(mb.K):
         for d in range(mb.NV.shape[1]):
             delta_kd = delta[k, d]
@@ -366,22 +370,27 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
                 axes[k,d].legend()
             elif maxx == 0:
-                #plot pareto
+                # plot pareto
                 pdf = pareto.pdf(x, alpha[k,d], scale=mb.pareto_L) #* weights[k]
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
                 axes[k,d].legend()
             else:
-                # print("Dirac")
+                # private
                 pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
                 axes[k,d].legend()
 
             data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
             # for i in np.unique(labels):
-            axes[k,d].hist(data[labels == k], density=True, bins=30, alpha=0.5)#, color=cmap(i))
+            if k in unique_labels:
+                axes[k, d].hist(data[labels == k], density=True, bins=30, alpha=1, color=color_mapping[k])
+            else:
+                # Plot an empty histogram because we know there are no points in that k
+                axes[k, d].hist([], density=True, bins=30, alpha=1)
             axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
+            axes[k,d].grid(True, color='gray', linestyle='-', linewidth=0.2)
             # axes[k,d].set_ylim([0,25])
-            axes[k,d].set_xlim([0,1])
+            axes[k,d].set_xlim([-0.01,0.8])
             plt.tight_layout()
     if savefig:
         plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")

@@ -315,18 +315,12 @@ class mobster_MV():
         paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
         return paretobin # tensor of len N (if D = 1, only N)
 
-    
     def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
         # delta -> D x 2
         delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # NxD tensor
         delta_beta = torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # N x D tensor
         delta_zeros = torch.log(delta[:, 2]) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP).log_prob(self.NV)
         
-        # zeros_NV = np.where(self.NV == 0.)
-        # print("Pareto", delta_pareto[zeros_NV])
-        # print("Beta", delta_beta[zeros_NV])
-        # print("Expon", delta_expon[zeros_NV])
-
         # Stack creates a 2 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto and delta_beta 
         return self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0)) # N
 
@@ -347,7 +341,6 @@ class mobster_MV():
         stack_tensors = torch.stack(log_lik, dim=1)
         # Non mi serve log sum exp perchè non devo più sommare sui delta_j
         return stack_tensors # N x D
-
 
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
@@ -383,7 +376,7 @@ class mobster_MV():
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
-        self.phi_beta_L = torch.tensor(0.15)
+        self.phi_beta_L = torch.tensor(0.13)
         self.phi_beta_H = 0.5
         # self.phi_beta_H = self.max_vaf
 
@@ -404,7 +397,6 @@ class mobster_MV():
 
         # Bounded pareto
         self.pareto_L = self.min_vaf
-        print("self.pareto_L", self.pareto_L)
         self.pareto_H = self.max_vaf
         self.probs_pareto_init = torch.tensor(0.09)
 
@@ -557,6 +549,11 @@ class mobster_MV():
 
 
     def stopping_criteria(self, old_par, new_par, check_conv):#, e=0.01):
+        '''
+        The function adds +1 for each consecutive iteration where 
+        all values change by less than the specified threshold 
+        compared to the previous iteration.
+        '''
         threshold = 0.01
         old = self.flatten_params(old_par)
         new = self.flatten_params(new_par)
@@ -640,6 +637,8 @@ class mobster_MV():
         self.lks = []
         self.pi_list = []
         self.delta_list = []
+        self.alpha_list = []
+        self.phi_list = []
         i = 0
         conv_iter = 100
         check_conv = 0
@@ -667,7 +666,9 @@ class mobster_MV():
             self.lks.append(lks.detach().numpy())
             self.pi_list.append(params['weights_param'])
             self.delta_list.append(params['delta_param'])
-
+            self.phi_list.append(params['phi_beta_param'])
+            self.alpha_list.append(params['alpha_pareto_param'])
+            """"""
             if i >= min_iter:
                 new_par = self.get_parameters_stopping(params)
                 check_conv = self.stopping_criteria(old_par, new_par, check_conv)
@@ -675,6 +676,7 @@ class mobster_MV():
                 # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
                 if check_conv == conv_iter and conv_loss == True:
                     break
+            
             if i % 200 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
 
@@ -687,7 +689,6 @@ class mobster_MV():
         print("Inference lk: ", self.lks[-1])
         print("Final lk (integr): ", self.log_sum_exp(final_lk).sum())
 
-        print("INTEGR: ")
         bic = self.compute_BIC(self.params, final_lk)
         print(f"bic: {bic} \n")
         icl = self.compute_ICL(self.params, bic)
@@ -738,37 +739,61 @@ class mobster_MV():
         # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
         
         return lks
-
+    
     def compute_euclidean_distance(self, t1, t2):
         # Flatten tensors to vectors
         t1_flat = t1.flatten()
         t2_flat = t2.flatten()
         return torch.norm(t1_flat - t2_flat).item()
-    
+
+    def compute_max_relative_distance(self, old, new):
+        old_flat = old.flatten()
+        new_flat = new.flatten()
+        # Compute relative distances element-wise
+        diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
+        # Return the maximum relative distance
+        return torch.max(diff_mix).item()
+
     def compute_mixing_distances(self, vector):
         distances = []
+        distances_euc = []
         for i in range(1, len(vector)):
-            dist = self.compute_euclidean_distance(vector[i - 1], vector[i])
+            # Compute the maximum relative distance for consecutive parameter vectors
+            dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
             distances.append(dist)
-        return distances
+            dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
+            distances_euc.append(dist_euc)
+        return distances, distances_euc
 
     def plot_loss_lks_dist(self):
-        dist_pi = self.compute_mixing_distances(self.pi_list)
-        dist_delta = self.compute_mixing_distances(self.delta_list)
-        _, ax = plt.subplots(1, 3, figsize=(20, 5))
-        ax[0].plot(self.losses)
-        ax[0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
-        ax[0].grid(True, color='gray', linestyle='-', linewidth=0.2)
+        dist_pi, dist_pi_euc = self.compute_mixing_distances(self.pi_list)
+        dist_delta, dist_delta_euc = self.compute_mixing_distances(self.delta_list)
+        dist_alpha,dist_alpha_euc = self.compute_mixing_distances(self.alpha_list)
+        dist_phi,dist_phi_euc = self.compute_mixing_distances(self.phi_list)
+        _, ax = plt.subplots(2, 2, figsize=(15, 15))
+        ax[0,0].plot(self.losses)
+        ax[0,0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
+        ax[0,0].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
-        ax[1].plot(self.lks)
-        ax[1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
-        ax[1].grid(True, color='gray', linestyle='-', linewidth=0.2)
+        ax[0,1].plot(self.lks)
+        ax[0,1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
+        ax[0,1].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
-        ax[2].plot(dist_pi, label="$\pi$")
-        ax[2].plot(dist_delta, label="$\delta$")
-        ax[2].set_title(f"Distances of mixing parameters between consecutive iterations")  
-        ax[2].grid(True, color='gray', linestyle='-', linewidth=0.2)  
-        ax[2].legend()    
+        ax[1,0].plot(dist_pi, label="pi")
+        ax[1,0].plot(dist_delta, label="delta")
+        ax[1,0].plot(dist_alpha, label="alpha")
+        ax[1,0].plot(dist_phi, label="phi")
+        ax[1,0].set_title(f"Max relative dist between consecutive iterations")  
+        ax[1,0].grid(True, color='gray', linestyle='-', linewidth=0.2)  
+        ax[1,0].legend()
+
+        ax[1,1].plot(dist_pi_euc, label="pi")
+        ax[1,1].plot(dist_delta_euc, label="delta")
+        ax[1,1].plot(dist_alpha_euc, label="alpha")
+        ax[1,1].plot(dist_phi_euc, label="phi")
+        ax[1,1].set_title(f"Euclidean dist between consecutive iterations")  
+        ax[1,1].grid(True, color='gray', linestyle='-', linewidth=0.2)  
+        ax[1,1].legend()   
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
@@ -794,12 +819,11 @@ class mobster_MV():
 
     def plot(self):
         """
-        PLOT I HAVE AT THE MOMENT
         Plot the results.
         """
         D = self.NV.shape[1]
         pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
-        vaf = self.NV/self.DP  
+        vaf = self.NV / self.DP
 
         weights = self.params["weights_param"].detach().numpy()
         print("Weights: ", weights)
@@ -809,27 +833,45 @@ class mobster_MV():
         color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
         colors = [color_mapping[label] for label in labels]
 
+        num_pairs = len(pairs[0])  # Number of unique pairs
+        ncols = 3  # Maximum of 3 plots per row
+        nrows = (num_pairs + ncols - 1) // ncols  # Calculate the number of rows
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5 * nrows))
+        axes = axes.flatten()  # Flatten the 2D array of axes for easy iteration
+
         idx = 0
         for i, j in zip(*pairs):
+            ax = axes[idx]  # Select the appropriate subplot
             x = vaf[:, i].numpy()
             y = vaf[:, j].numpy()
 
-            sc = plt.scatter(x, y, c=colors, cmap = 'Set3') # tab10
+            sc = ax.scatter(x, y, c=colors,s=10)  # tab20
             handles = [plt.Line2D([0], [0], marker='o', color='w', label=f"{label} (\u03C0 = {weights[label]:.3f})",
-                        markerfacecolor=color_mapping[label], markersize=10) 
-            for label in unique_labels]
-            plt.legend(handles=handles)
-        
-            plt.title(f"Inference Sample {i+1} vs Sample {j+1} (K = {self.K}, seed {self.seed})")        
-            plt.xlabel(f"Sample {i+1}")
-            plt.ylabel(f"Sample {j+1}")
-            plt.xlim([0,1])
-            plt.ylim([0,1])
-            if self.savefig:
-                plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}_{idx}.png")
-                idx += 1
-            plt.show()
-            plt.close()
+                                markerfacecolor=color_mapping[label], markersize=10) 
+                    for label in unique_labels]
+            ax.legend(handles=handles)
+
+            ax.set_title(f"Sample {i+1} vs Sample {j+1} (K = {self.K}, seed {self.seed})")
+            ax.set_xlabel(f"Sample {i+1}")
+            ax.set_ylabel(f"Sample {j+1}")
+            ax.set_xlim([0, 1])
+            ax.set_ylim([0, 1])
+
+            idx += 1
+
+        # Hide any unused subplots (if there are fewer than nrows * ncols pairs)
+        for i in range(idx, len(axes)):
+            axes[i].axis('off')
+
+        # Adjust layout to avoid overlap
+        plt.tight_layout()
+
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/inference_K_{self.K}_seed_{self.seed}.png")
+
+        plt.show()
+        plt.close()
         
     def calculate_number_of_params(self, params):
         keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param", "probs_pareto_param", "w_param"]

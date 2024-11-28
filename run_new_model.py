@@ -1,4 +1,4 @@
-import new_model as model_mobster_mv
+import new_model2 as model_mobster_mv
 import numpy as np
 import pandas as pd
 import pyro.distributions as dist
@@ -17,6 +17,7 @@ from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
 
 import os
+import time
 
 """
 N1 = 500
@@ -98,42 +99,32 @@ NV = torch.concat((NV,NV6))
 DP = torch.concat((DP,DP6))
 """
 
-# NV_r = pd.read_csv("./data/new_sim/NV_lesson.csv")
-# DP_r = pd.read_csv("./data/new_sim/DP_lesson.csv")
-
-# NV = torch.tensor(NV_r.to_numpy())
-# DP = torch.tensor(DP_r.to_numpy())
-# idx = [1,2]
-# NV = NV[:,idx]
-# DP = DP[:,idx]
-
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
-NV1 = torch.tensor(data['Set7_55.NV'].to_numpy())
-DP1 = torch.tensor(data['Set7_55.DP'].to_numpy())
+sets = [55, 57, 59, 62]
+s_number = 7
 
-NV2 = torch.tensor(data['Set7_57.NV'].to_numpy())
-DP2 = torch.tensor(data['Set7_57.DP'].to_numpy())
+"""
+data = pd.read_csv("./data/real_data/Set6_mutations.csv")
 
-NV = torch.stack((NV1,NV2),dim=1)
-DP = torch.stack((DP1,DP2),dim=1)
+sets = [42, 44, 45, 46, 47, 48]
+s_number = 6
+"""
+data_folder = 'set7'
 
-NV3 = torch.tensor(data['Set7_59.NV'].to_numpy()).view(NV1.shape[0], 1)
-DP3 = torch.tensor(data['Set7_59.DP'].to_numpy()).view(NV1.shape[0], 1)
+NV_list = []
+DP_list = []
 
-NV = torch.cat((NV,NV3),dim=1)
-DP = torch.cat((DP,DP3),dim=1)
+for s in sets:
+    NV = torch.tensor(data[f'Set{s_number}_{s}.NV'].to_numpy())
+    DP = torch.tensor(data[f'Set{s_number}_{s}.DP'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
 
-NV4 = torch.tensor(data['Set7_62.NV'].to_numpy()).view(NV1.shape[0], 1)
-DP4 = torch.tensor(data['Set7_62.DP'].to_numpy()).view(NV1.shape[0], 1)
 
-NV = torch.cat((NV,NV4),dim=1)
-DP = torch.cat((DP,DP4),dim=1)
-""""""
-# ylim = 3000
-
-ylim = 1200
-data_folder = 'real_data_high_K_3'
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
 
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
@@ -186,11 +177,11 @@ plt.suptitle("Marginals")
 
 for i in range(D):
     x = vaf[:, i].numpy()
+    x = x[x > 0]
     axes[i].hist(x, bins = 80)    
     
     axes[i].set_xlabel(f"Sample {i+1}")
     axes[i].set_xlim([0,1])
-    axes[i].set_ylim([0,ylim])
 
 plt.show()
 plt.savefig(f'plots/{data_folder}/marginals.png')
@@ -198,13 +189,19 @@ plt.close()
 
 save = True
 seed_list = [40,41,42]
-# K_list = [11,12,13,14,15,16,17]
-# K_list = [11,12,13,14]
-# K_list = [15,16,17]
-# K_list = [18,19,20,21]
-K_list = [20,21]
-# K_list = [4,5,6,7,8]
-_, best_K, best_seed =  model_mobster_mv.fit(NV, DP, num_iter = 3500, K = K_list, seed = seed_list, lr = 0.01, savefig = save, data_folder = data_folder)
+#K_list = [8,9,10,11,12,13,14,15,16]
+K_list = [12,13,14,15,16,17]
+# Record the start time
+start_time = time.time()
+
+_, best_K, best_seed = model_mobster_mv.fit(NV, DP, num_iter=3000, K=K_list, seed=seed_list, lr=0.01, savefig=save, data_folder=data_folder)
+
+# Record the end time
+end_time = time.time()
+# Calculate the time elapsed
+elapsed_time = end_time - start_time
+# Print the elapsed time
+print(f"Time taken for the fit function: {elapsed_time:.2f} seconds")
 
 # Restore saved objects
 loaded_list = []
@@ -296,27 +293,52 @@ for i, k in enumerate(K_list):
     bic_list.append(bic)
     icl_list.append(icl)
 
-plt.figure()
+plt.figure(figsize=(20, 6))
+
+# Subplot 1: Likelihood over K
+plt.subplot(1, 3, 1)
 plt.title("Likelihood over K")
 plt.xlabel("K")
 plt.ylabel("Likelihood")
-plt.plot(K_list, lk_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/likelihood_over_K.png")
-plt.close()
+plt.plot(K_list, lk_list, label="Likelihood", color='black')
+# Scatter all points (other than the minimum one) in black
+plt.scatter(K_list, lk_list, color='black', zorder=5)  
+# Find the index of the minimum value and highlight it in red
+min_index_lk = np.argmax(lk_list)
+plt.scatter(K_list[min_index_lk], lk_list[min_index_lk], color='black', zorder=10)  
+plt.legend()
+plt.grid(True, color='gray', linestyle='-', linewidth=0.2)  
 
-plt.figure()
+# Subplot 2: BIC over K
+plt.subplot(1, 3, 2)
 plt.title("BIC over K")
 plt.xlabel("K")
 plt.ylabel("BIC")
-plt.plot(K_list, bic_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/bic_over_K.png")
-plt.close()
+plt.plot(K_list, bic_list, label="BIC", color='black')
+# Scatter all points (other than the minimum one) in black
+plt.scatter(K_list, bic_list, color='black', zorder=5)  
+# Find the index of the minimum value and highlight it in red
+min_index_bic = np.argmin(bic_list)
+plt.scatter(K_list[min_index_bic], bic_list[min_index_bic], color='r', zorder=10)  
+plt.legend()
+plt.grid(True, color='gray', linestyle='-', linewidth=0.2)  
 
-plt.figure()
+# Subplot 3: ICL over K
+plt.subplot(1, 3, 3)
 plt.title("ICL over K")
 plt.xlabel("K")
 plt.ylabel("ICL")
-plt.plot(K_list, icl_list)
-plt.savefig(f"plots/{data_folder}/final_analysis/icl_over_K.png")
+plt.plot(K_list, icl_list, label="ICL", color='black')
+# Scatter all points (other than the minimum one) in black
+plt.scatter(K_list, icl_list, color='black', zorder=5)  
+# Find the index of the minimum value and highlight it in red
+min_index_icl = np.argmin(icl_list)
+plt.scatter(K_list[min_index_icl], icl_list[min_index_icl], color='r', zorder=10)  
+plt.legend()
+plt.grid(True, color='gray', linestyle='-', linewidth=0.2)  
+
+plt.tight_layout()
+
+plt.savefig(f"plots/{data_folder}/final_analysis/metrics_over_K.png")
 plt.close()
 
