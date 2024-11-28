@@ -410,7 +410,7 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
                 data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
             # for i in np.unique(labels):
             if k in unique_labels:
-                axes[k, d].hist(data[labels == k],  bins=30, alpha=1, color=color_mapping[k])
+                axes[k, d].hist(data[labels == k],  density=True, bins=30, alpha=1, color=color_mapping[k])
             else:
                 # Plot an empty histogram because we know there are no points in that k
                 axes[k, d].hist([], density=True, bins=30, alpha=1)
@@ -424,3 +424,66 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
+
+def plot_mixing_proportions(mb, savefig=False, data_folder=None):
+    # Extract weights and convert to numpy if needed
+    weights = mb.params["weights_param"]
+    if torch.is_tensor(weights):
+        weights = weights.detach().numpy()
+    else:
+        weights = np.array(weights)
+        
+    # Extract labels and convert to tensor for bincount
+    labels = mb.params["cluster_assignments"]
+    if not torch.is_tensor(labels):
+        labels = torch.tensor(labels)
+
+    num_clusters = weights.shape[0]
+    unique_labels = np.unique(labels)
+
+    # Generate color mapping using the tab20 colormap
+    cmap = cm.get_cmap('tab20')
+    color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+
+    # Plot 1: Mixing Proportions
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    bars1 = []
+    for i in range(num_clusters):
+        if i in unique_labels:
+            bar = plt.bar(i, weights[i], color=color_mapping[i])
+        else:
+            bar = plt.bar(i, weights[i], color='gray')
+        bars1.append(bar[0])  # Store the bar for legend
+
+    plt.title('Mixing Proportions')
+    plt.xlabel('Cluster')
+    plt.ylabel('Mixing Proportion')
+    plt.xticks(range(num_clusters))
+    
+    legend_labels = [f"Cluster {i}: {weights[i]:.2f}" for i in range(num_clusters)]
+    plt.legend(bars1, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2)
+
+    # Plot 2: Number of Points per Cluster
+    plt.subplot(1, 2, 2)
+    num_points_per_cluster = torch.bincount(labels)
+    bars2 = []
+    for i in range(len(num_points_per_cluster)):
+        bar = plt.bar(i, num_points_per_cluster[i].numpy(), color=color_mapping[i])
+        bars2.append(bar[0])  # Store the bar for legend
+
+    plt.title('Number of Points per Cluster')
+    plt.xlabel('Cluster')
+    plt.ylabel('Count')
+    plt.xticks(range(len(num_points_per_cluster)))
+
+    # Create legends for each bar in Points per Cluster
+    legend_labels_points = [f"Cluster {i}: {num_points_per_cluster[i]}" for i in range(len(num_points_per_cluster))]
+    plt.legend(bars2, legend_labels_points, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2)
+
+    plt.tight_layout()
+
+    if savefig:
+        plt.savefig(f"plots/{data_folder}/mixing_proportions_plot.png")
+    else:
+        plt.show()

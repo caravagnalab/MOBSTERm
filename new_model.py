@@ -4,6 +4,7 @@ import pyro.distributions as dist
 import pyro.poutine as poutine
 import copy
 import json
+import time
 
 import torch
 from torch.distributions import constraints
@@ -89,6 +90,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
             plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            plot_mixing_proportions(mb_best_seed, savefig = savefig, data_folder = data_folder)
             
             mb_list.append(mb_best_seed)
             if mb_best_seed.final_dict['icl'] <= min_bic:
@@ -253,14 +255,7 @@ class mobster_MV():
                 init_delta[i,j,sorted_indices[1]] = 0.3
                 init_delta[i,j,sorted_indices[2]] = 0.1
                 # if(beta_lk[i,j] > pareto_lk[i,j]):
-                #     init_delta[i,j,0] = 0.4 # pareto
-                #     init_delta[i,j,1] = 0.5 # beta
-                #     init_delta[i,j,2] = 0.1 # beta
-                # else:
-                #     init_delta[i,j,0] = 0.5 # pareto
-                #     init_delta[i,j,1] = 0.4 # beta
-                #     init_delta[i,j,2] = 0.1 # beta
-        print("init_delta: ", init_delta)
+
         return init_delta
 
 
@@ -361,10 +356,6 @@ class mobster_MV():
         delta_beta = torch.log(delta[:, :, 1].unsqueeze(1)) + dist.BetaBinomial(a_beta.unsqueeze(1), b_beta.unsqueeze(1), total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
         delta_zeros = torch.log(delta[:, :, 2].unsqueeze(1)) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
         
-        # assert delta_pareto.shape == (self.NV.shape[0],self.NV.shape[1])
-        # assert delta_beta.shape == (self.NV.shape[0],self.NV.shape[1])
-        # assert delta_zeros.shape == (self.NV.shape[0],self.NV.shape[1])
-        
         # Stack creates a 3 x K x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto, delta_beta and delta_zeros 
         stacked = torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0) # 3 x K x N x D tensor
         log = self.log_sum_exp(stacked) # apply log sum exp on first dimension => K x N x D tensor
@@ -376,6 +367,7 @@ class mobster_MV():
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         
+        start_time = time.time()
         if which == 'inference':
             log = self.log_beta_par_mix_inference(probs_pareto, delta, alpha, a_beta, b_beta) # K x N x D
             log_sum = log.sum(axis=2)  # sums over the data dimensions (columns) => K x N tensor
@@ -384,6 +376,13 @@ class mobster_MV():
         else:
             for k in range(self.K):
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+        
+        end_time = time.time()
+        # Calculate the time elapsed
+        elapsed_time = end_time - start_time
+        # Print the elapsed time
+        print(f"Time taken without the loop: {elapsed_time:.2f} seconds")
+
         assert lk.shape == (self.K, len(self.NV))
         """
         for k in range(self.K):
@@ -541,12 +540,7 @@ class mobster_MV():
         
         delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
         # delta_param = pyro.param("delta_param", lambda: dist.Dirichlet(torch.ones(3)).sample([K, D]).reshape(K, D, 3), constraint=constraints.simplex)
-        # print(delta_param)
-        # w_param = pyro.param(
-        #     "w_param",
-        #     lambda: torch.where(self.init_delta < 0.5, torch.tensor(1e-10), torch.tensor(1 - 1e-10)),
-        #     constraint=constraints.simplex
-        # )
+       
         #w_param = pyro.param("w_param", lambda: self.init_delta, constraint=constraints.simplex)
 
         
@@ -718,7 +712,7 @@ class mobster_MV():
                 if check_conv == conv_iter and conv_loss == True:
                     break
             
-            if i % 200 == 0:
+            if i % 100 == 0:
                 print("Iteration {}: Loss = {}".format(i, loss))
 
         self.params = self.get_parameters()
@@ -867,7 +861,6 @@ class mobster_MV():
         vaf = self.NV / self.DP
 
         weights = self.params["weights_param"].detach().numpy()
-        print("Weights: ", weights)
         unique_labels = np.unique(self.params["cluster_assignments"].detach().numpy())
         labels = self.params["cluster_assignments"].detach().numpy()
         cmap = cm.get_cmap('tab20')
