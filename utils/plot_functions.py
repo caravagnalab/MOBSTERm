@@ -335,13 +335,37 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
 
 
 def plot_marginals_new(mb, savefig = False, data_folder = None):
-    delta = mb.params["delta_param"]  # K x D x 2
-    phi_beta = mb.params["phi_beta_param"].detach().numpy()
-    kappa_beta = mb.params["k_beta_param"].detach().numpy()
-    alpha = mb.params["alpha_pareto_param"].detach().numpy()
-    weights = mb.params["weights_param"].detach().numpy()
+    delta = torch.tensor(mb.params["delta_param"])  # K x D x 2
+    phi_beta = mb.params["phi_beta_param"]
+    if torch.is_tensor(phi_beta):
+        phi_beta = phi_beta.detach().numpy()
+    else:
+        phi_beta = np.array(phi_beta)
     
-    labels = mb.params['cluster_assignments'].detach().numpy()
+    kappa_beta = mb.params["k_beta_param"]
+    if torch.is_tensor(kappa_beta):
+        kappa_beta = kappa_beta.detach().numpy()
+    else:
+        kappa_beta = np.array(kappa_beta)
+
+    alpha = mb.params["alpha_pareto_param"]
+    if torch.is_tensor(alpha):
+        alpha = alpha.detach().numpy()
+    else:
+        alpha = np.array(alpha)
+    
+    weights = mb.params["weights_param"]
+    if torch.is_tensor(weights):
+        weights = weights.detach().numpy()
+    else:
+        weights = np.array(weights)
+        
+    labels = mb.params['cluster_assignments']
+    if torch.is_tensor(labels):
+        labels = labels.detach().numpy()
+    else:
+        labels = np.array(labels)
+
     
     # For each sample I want to plot all the clusters separately.
     # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
@@ -380,7 +404,10 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
                 axes[k,d].legend()
 
-            data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+            if torch.is_tensor(mb.NV):
+                data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+            else:
+                data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
             # for i in np.unique(labels):
             if k in unique_labels:
                 axes[k, d].hist(data[labels == k], density=True, bins=30, alpha=1, color=color_mapping[k])
@@ -396,3 +423,4 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
         plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
     plt.show()
     plt.close()
+
