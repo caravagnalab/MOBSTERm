@@ -456,9 +456,9 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
             bar = plt.bar(i, weights[i], color='gray')
         bars1.append(bar[0])  # Store the bar for legend
 
-    plt.title('Mixing Proportions')
+    plt.title('Mixing proportions')
     plt.xlabel('Cluster')
-    plt.ylabel('Mixing Proportion')
+    plt.ylabel('Mixing proportion')
     plt.xticks(range(num_clusters))
     
     legend_labels = [f"Cluster {i}: {weights[i]:.2f}" for i in range(num_clusters)]
@@ -467,12 +467,16 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     # Plot 2: Number of Points per Cluster
     plt.subplot(1, 2, 2)
     num_points_per_cluster = torch.bincount(labels)
+    print(num_points_per_cluster)
     bars2 = []
     for i in range(len(num_points_per_cluster)):
-        bar = plt.bar(i, num_points_per_cluster[i].numpy(), color=color_mapping[i])
-        bars2.append(bar[0])  # Store the bar for legend
+        if i in unique_labels:
+            bar = plt.bar(i, num_points_per_cluster[i].numpy(), color=color_mapping[i])
+        else:
+            bar = plt.bar(i, num_points_per_cluster[i].numpy(), color='gray')
+        bars2.append(bar[0])
 
-    plt.title('Number of Points per Cluster')
+    plt.title('Number of points per cluster')
     plt.xlabel('Cluster')
     plt.ylabel('Count')
     plt.xticks(range(len(num_points_per_cluster)))
@@ -484,6 +488,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     plt.tight_layout()
 
     if savefig:
-        plt.savefig(f"plots/{data_folder}/mixing_proportions_plot.png")
+        plt.savefig(f"plots/{data_folder}/mixing_proportions_{mb.K}_seed_{mb.seed}.png")
     else:
         plt.show()
+    plt.close()
