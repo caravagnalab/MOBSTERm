@@ -158,19 +158,32 @@ D = NV.shape[1]
 pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
 vaf = NV/DP    
 
+
+num_pairs = len(pairs[0])  # Number of unique pairs
+ncols = 3  # Maximum of 3 plots per row
+nrows = (num_pairs + ncols - 1) // ncols  # Calculate the number of rows
+
+fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5 * nrows))
+axes = axes.flatten()
+
+idx = 0
 for i, j in zip(*pairs):
+    ax = axes[idx]  # Select the appropriate subplot
     x = vaf[:, i].numpy()
     y = vaf[:, j].numpy()
 
-    plt.scatter(x, y, alpha=0.7)
-    plt.title(f"Sample {i+1} vs Sample {j+1}")
-    plt.xlabel(f"Sample {i+1}")
-    plt.ylabel(f"Sample {j+1}")
-    plt.xlim([0,1])
-    plt.ylim([0,1])
-    plt.show()
-    plt.savefig(f'plots/{data_folder}/orig_data_{i+1}_vs_{j+1}.png')
-    plt.close()
+    ax.scatter(x, y, alpha=0.7)
+
+    ax.set_title(f"Sample {i+1} vs Sample {j+1}")
+    ax.set_xlabel(f"Sample {i+1}")
+    ax.set_ylabel(f"Sample {j+1}")
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    idx += 1
+
+plt.show()
+plt.savefig(f'plots/{data_folder}/orig_data.png')
+plt.close()
 
 fig, axes = plt.subplots(1, D, figsize=(5*D, 4))
 plt.suptitle("Marginals")
