@@ -99,18 +99,19 @@ NV = torch.concat((NV,NV6))
 DP = torch.concat((DP,DP6))
 """
 
+data_folder = 'set6_w'
+"""
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
 sets = [55, 57, 59, 62]
 s_number = 7
-
 """
+
 data = pd.read_csv("./data/real_data/Set6_mutations.csv")
 
 sets = [42, 44, 45, 46, 47, 48]
 s_number = 6
-"""
-data_folder = 'set7'
+
 
 NV_list = []
 DP_list = []
@@ -122,6 +123,23 @@ for s in sets:
     NV_list.append(NV.view(-1, 1))  # Ensure correct shape
     DP_list.append(DP.view(-1, 1))  # Ensure correct shape
 
+"""
+data_folder = 'gbm_long'
+data = pd.read_csv("./data/gbm.csv")
+
+sets = ['primary', 'relapse']
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    NV = torch.tensor(data[f'NV_{s}'].to_numpy())
+    DP = torch.tensor(data[f'DP_{s}'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
+
+"""
 
 NV = torch.cat(NV_list, dim=1)
 DP = torch.cat(DP_list, dim=1)
@@ -160,11 +178,19 @@ vaf = NV/DP
 
 
 num_pairs = len(pairs[0])  # Number of unique pairs
-ncols = 3  # Maximum of 3 plots per row
+# ncols = 3
+ncols = min(3, num_pairs)
 nrows = (num_pairs + ncols - 1) // ncols  # Calculate the number of rows
 
-fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5 * nrows))
-axes = axes.flatten()
+fig_width_per_plot = 5
+fig_width = ncols * fig_width_per_plot
+fig_height = 5 * nrows
+
+fig, axes = plt.subplots(nrows, ncols, figsize=(fig_width, fig_height))
+if num_pairs == 1:
+    axes = [axes]
+else:
+    axes = axes.flatten()
 
 idx = 0
 for i, j in zip(*pairs):
@@ -201,9 +227,9 @@ plt.savefig(f'plots/{data_folder}/marginals.png')
 plt.close()
 
 save = True
-seed_list = [40,41,42]
-#K_list = [8,9,10,11,12,13,14,15,16]
-K_list = [12,13,14,15,16,17]
+seed_list = [41,42]
+# K_list = [11,12,13,14,15,16,17,18]
+K_list = [3,4,5,6,7,8,9, 10, 11, 12]
 # Record the start time
 start_time = time.time()
 
@@ -215,6 +241,7 @@ end_time = time.time()
 elapsed_time = end_time - start_time
 # Print the elapsed time
 print(f"Time taken for the fit function: {elapsed_time:.2f} seconds")
+
 
 # Restore saved objects
 loaded_list = []

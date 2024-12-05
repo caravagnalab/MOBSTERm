@@ -38,8 +38,7 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto = True, 
-        purity=1, seed=[1,2,3], lr = 0.001, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234], par_threshold = 0.01, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -62,7 +61,10 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
             # Fai ciclo con 4/5 seed diversi e prendi bic minore
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                curr_mb.append(mobster_MV(NV, DP, K = curr_k, seed = curr_seed, savefig = savefig, data_folder = data_folder))
+                curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, 
+                                            seed = curr_seed, par_threshold = 0.01,
+                                            loss_threshold = 0.01, savefig = savefig, 
+                                            data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
                 dict = copy.copy(curr_mb[j].__dict__)
                 for key, value in dict.items():
@@ -85,7 +87,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
                         f.write(json.dumps(dict_copy) + '\n')  # Write as a JSON string
             
             plot_marginals_new(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            # plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_deltas_new(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
@@ -104,7 +106,8 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], tail=1, truncated_pareto 
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, tail=1, truncated_pareto = True, purity=1, seed=2, savefig = False, data_folder = None):
+    def __init__(self, NV = None, DP = None, K = 1, purity=1, seed=[123,1234], 
+                    par_threshold = 0.01, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
         
@@ -127,10 +130,10 @@ class mobster_MV():
         if DP is not None:
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
         self.K = K
-        self.tail = tail
-        self.truncated_pareto = truncated_pareto
         self.purity = purity
         self.seed = seed
+        self.par_threshold = par_threshold
+        self.loss_threshold = loss_threshold
         self.savefig = savefig
         self.data_folder = data_folder
 
@@ -147,7 +150,7 @@ class mobster_MV():
         best_labels = None
         # Implement loop to choose the seed which produces a result with the lowest inertia
         
-        for seed in range(1, 10):
+        for seed in range(1, 50):
             kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init=2).fit((self.NV/self.DP).numpy())
             best_cluster = kmeans.labels_.copy()
             centers = torch.tensor(kmeans.cluster_centers_)
@@ -367,7 +370,7 @@ class mobster_MV():
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         
-        start_time = time.time()
+        # start_time = time.time()
         if which == 'inference':
             log = self.log_beta_par_mix_inference(probs_pareto, delta, alpha, a_beta, b_beta) # K x N x D
             log_sum = log.sum(axis=2)  # sums over the data dimensions (columns) => K x N tensor
@@ -377,11 +380,9 @@ class mobster_MV():
             for k in range(self.K):
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
         
-        end_time = time.time()
-        # Calculate the time elapsed
-        elapsed_time = end_time - start_time
-        # Print the elapsed time
-        print(f"Time taken without the loop: {elapsed_time:.2f} seconds")
+        # end_time = time.time()
+        # elapsed_time = end_time - start_time
+        # print(f"Time taken without the loop: {elapsed_time:.2f} seconds")
 
         assert lk.shape == (self.K, len(self.NV))
         """
@@ -416,21 +417,21 @@ class mobster_MV():
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
-        self.phi_beta_L = torch.tensor(0.13)
+        self.phi_beta_L = torch.tensor(0.12)
+        # self.phi_beta_L = self.min_vaf
         self.phi_beta_H = 0.5
         # self.phi_beta_H = self.max_vaf
 
         # k_beta
         self.k_beta_L = torch.tensor(90.)
         self.k_beta_init = torch.tensor(200.) # which will be 90+200
-        # self.k_beta_std = torch.tensor(100.)
         self.k_beta_mean = torch.tensor(200.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
         self.alpha_pareto_mean = torch.tensor(1.)
         self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_factor = torch.tensor(1.)
+        
         self.alpha_pareto_init = torch.tensor(1.5)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
@@ -477,7 +478,7 @@ class mobster_MV():
         # Data generation
         with pyro.plate("plate_data", len(NV)):
             # .sum() sums over the data because we have a log-likelihood
-            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_pareto, self.alpha_factor*alpha, a_beta, b_beta, weights, delta, which = 'inference')).sum())
+            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference')).sum())
 
 
     def get_a_beta(self, phi, kappa):
@@ -586,14 +587,13 @@ class mobster_MV():
     def stopping_criteria(self, old_par, new_par, check_conv):#, e=0.01):
         '''
         The function adds +1 for each consecutive iteration where 
-        all values change by less than the specified threshold 
-        compared to the previous iteration.
+        all parameter values change by less than the specified threshold 
+        compared to the previous iteration (relative difference).
         '''
-        threshold = 0.01
         old = self.flatten_params(old_par)
         new = self.flatten_params(new_par)
         diff_mix = np.abs(old - new) / np.abs(old)
-        if np.all(diff_mix < threshold):
+        if np.all(diff_mix < self.par_threshold):
             return check_conv + 1 
         return 0
 
@@ -606,11 +606,10 @@ class mobster_MV():
         return par
     
     def loss_convergence(self):
-        threshold = 0.01
         old = self.losses[-2]
         curr = self.losses[-1]
         diff = np.abs(old - curr) / np.abs(old)
-        if diff < threshold:
+        if diff < self.loss_threshold:
             return True
         else:
             return False
@@ -693,6 +692,7 @@ class mobster_MV():
             a_beta = self.get_a_beta(params["phi_beta_param"], params["k_beta_param"])
             b_beta = self.get_b_beta(params["phi_beta_param"], params["k_beta_param"])
             probs_pareto = params["probs_pareto_param"] if "probs_pareto_param" in params.keys() else BoundedPareto(self.pareto_L, params["alpha_pareto_param"], self.pareto_H).sample()
+            
             lks = self.log_sum_exp(self.m_total_lk(probs_pareto,
                                                    params["alpha_pareto_param"], a_beta, b_beta, 
                                                    params["weights_param"], params["delta_param"], which = 'inference')).sum()
@@ -746,7 +746,7 @@ class mobster_MV():
         """
         Compute likelihood with learnt parameters
         """
-        alpha = self.params["alpha_pareto_param"] * self.alpha_factor
+        alpha = self.params["alpha_pareto_param"] 
         delta = self.params["delta_param"]  # K x D x 2
         # delta = self.params["w_param"]  # K x D x 2
         
@@ -868,11 +868,19 @@ class mobster_MV():
         colors = [color_mapping[label] for label in labels]
 
         num_pairs = len(pairs[0])  # Number of unique pairs
-        ncols = 3  # Maximum of 3 plots per row
+        # ncols = 3
+        ncols = min(3, num_pairs)
         nrows = (num_pairs + ncols - 1) // ncols  # Calculate the number of rows
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5 * nrows))
-        axes = axes.flatten()  # Flatten the 2D array of axes for easy iteration
+        fig_width_per_plot = 5
+        fig_width = ncols * fig_width_per_plot
+        fig_height = 5 * nrows
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(fig_width, fig_height))
+        if num_pairs == 1:
+            axes = [axes]
+        else:
+            axes = axes.flatten()
 
         idx = 0
         for i, j in zip(*pairs):

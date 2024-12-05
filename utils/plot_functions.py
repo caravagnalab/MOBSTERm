@@ -246,7 +246,7 @@ def plot_marginals(mb,  savefig = False, data_folder = None):
 
 
 def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
-    delta = mb.params["delta_param"]  # K x D x 2
+    # delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"]
     if torch.is_tensor(phi_beta):
         phi_beta = phi_beta.detach().numpy()
@@ -279,41 +279,30 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
     
     cmap = cm.get_cmap('tab20')#, len(np.unique(labels))) # Set3
     K = mb.K
+    D = mb.NV.shape[1]
     unique = np.unique(labels)
     # For each dimension, for each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(1, D, figsize=(5*D, 5))
     x = np.linspace(0.001, 1, 1000)
     plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
     for d in range(mb.NV.shape[1]):
-        # for k in range(mb.K):
-        #     delta_kd = delta[k, d]
-        #     maxx = torch.argmax(delta_kd)
-        #     if maxx == 1:
-        #         # plot beta
-        #         a = phi_beta[k,d] * kappa_beta[k,d]
-        #         b = (1-phi_beta[k,d]) * kappa_beta[k,d]
-        #         pdf = beta.pdf(x, a, b)# * weights[k]
-        #         axes[d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
-        #     else:
-        #         #plot pareto
-        #         pdf = pareto.pdf(x, alpha[k,d], scale=0.01)# * weights[k]
-        #         axes[d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
-        # axes[d].legend()
         if torch.is_tensor(mb.NV):
             data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
         else:
             data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
-        # # cmap = plt.get_cmap('viridis', np.unique(labels))
-        # cmap = cm.get_cmap('Set1', len(np.unique(labels)))
-        # for i in np.unique(labels):
         j = 0
         for i in range(K):
             if i in unique:
                 color = cmap(j)  # Get a color from the colormap for each unique label
                 j+=1
-                # print("COLOR:", color)
-                _, _, patches = axes[d].hist(data[labels == i], 
-                                            density=True,
+                # bin_width = 8
+
+                data_hist = data[(labels == i) & (data != 0)]
+                # data_range = np.max(data_hist) - np.min(data_hist)
+                # num_bins = int(np.ceil(data_range / bin_width))
+                
+
+                _, _, patches = axes[d].hist(data_hist, 
                                             bins=30, 
                                             edgecolor='white', 
                                             linewidth=1, 
@@ -326,7 +315,7 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
         # axes[d].hist(data[labels == 1], density=True, bins=30, alpha=0.3, color='yellow')
         
         axes[d].set_title(f"Dimension {d+1}")
-        axes[d].set_ylim([0,15])
+        axes[d].grid(True, color='gray', linestyle='-', linewidth=0.2)
         axes[d].set_xlim([0,1])
         plt.tight_layout()
         if savefig:
@@ -335,7 +324,7 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
 
 
 def plot_marginals_new(mb, savefig = False, data_folder = None):
-    delta = torch.tensor(mb.params["delta_param"])  # K x D x 2
+    delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"]
     if torch.is_tensor(phi_beta):
         phi_beta = phi_beta.detach().numpy()
@@ -461,7 +450,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     plt.ylabel('Mixing proportion')
     plt.xticks(range(num_clusters))
     
-    legend_labels = [f"Cluster {i}: {weights[i]:.2f}" for i in range(num_clusters)]
+    legend_labels = [f"Cluster {i}: {weights[i]:.3f}" for i in range(num_clusters)]
     plt.legend(bars1, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2)
 
     # Plot 2: Number of Points per Cluster
