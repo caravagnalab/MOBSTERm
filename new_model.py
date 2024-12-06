@@ -50,7 +50,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
         print(f"GPU: {torch.cuda.get_device_name(0)} is available.")
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
     else:
-        print("No GPU available. Training will run on CPU.")
+        print("No GPU available.")
 
     for curr_k in K:
         j = 0
@@ -62,8 +62,8 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
                 curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, 
-                                            seed = curr_seed, par_threshold = 0.01,
-                                            loss_threshold = 0.01, savefig = savefig, 
+                                            seed = curr_seed, par_threshold = par_threshold,
+                                            loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
                 dict = copy.copy(curr_mb[j].__dict__)
@@ -148,11 +148,10 @@ class mobster_MV():
         best_inertia = float('inf')
         best_centers = None
         best_labels = None
-        # Implement loop to choose the seed which produces a result with the lowest inertia
-        
+
+        # Loop to choose the seed which produces a result with the lowest inertia
         for seed in range(1, 50):
             kmeans = KMeans(n_clusters=self.K, random_state=seed, n_init=2).fit((self.NV/self.DP).numpy())
-            best_cluster = kmeans.labels_.copy()
             centers = torch.tensor(kmeans.cluster_centers_)
             # Compute inertia (the lower the better)
             inertia = kmeans.inertia_
@@ -168,7 +167,7 @@ class mobster_MV():
         # print("Kmeans centers:", self.kmeans_centers_no_noise)
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= 1] = 1 - 1e-10
+        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf
         
         mean = 0
         std_dev = 0.005
@@ -182,7 +181,7 @@ class mobster_MV():
         # Clip probabilities in [min_vaf, 0.999]
         best_centers[best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L) # used as initial value of phi_beta
         # best_centers[best_centers <= 0] = 1 - 0.999
-        best_centers[best_centers >= 1] = 0.999
+        best_centers[best_centers >= self.max_vaf] = self.max_vaf
         self.kmeans_centers = best_centers
         # self.kmeans_centers = self.kmeans_centers_no_noise
         # print(self.kmeans_centers)
@@ -212,8 +211,8 @@ class mobster_MV():
         kappas = [1 / variance if variance > 0 else np.inf for variance in variances]
         self.init_kappas = torch.tensor(np.tile(kappas, (self.NV.shape[1], 1)).T)
         """
-        """
-        # Print kmeans result
+        """"""
+        # Plot kmeans result
         plt.figure()
         sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = best_labels)
         legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
@@ -226,7 +225,7 @@ class mobster_MV():
         plt.show()
         # print("kmeans_centers: ", self.kmeans_centers)
         plt.close()
-        """
+        
         
 
     def initialize_delta(self, phi_beta, k_beta, alpha):
@@ -235,14 +234,13 @@ class mobster_MV():
         beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers_no_noise)
         # Note that I had to put 1 as upper bound of BoundedPareto because kmeans centers can also be bigger than 0.5 (due to my clip)
         # Otherwise the likelihood is infinite
-        pareto_lk = BoundedPareto(self.pareto_L, alpha, 1).log_prob(self.kmeans_centers_no_noise)
+        pareto_lk = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(self.kmeans_centers_no_noise)
 
         zeros_lk = dist.Beta(self.a_beta_zeros, self.b_beta_zeros).log_prob(self.kmeans_centers_no_noise)
-
-        # print(self.kmeans_centers_no_noise)
-        # print("Pareto lk", pareto_lk)
-        # print("Beta lk", beta_lk)
-        # print("Exp lk", exp_lk)
+        print(self.kmeans_centers[5,0])
+        print(self.kmeans_centers_no_noise[5,0])
+        print(pareto_lk[5,0])
+        print(beta_lk[5,0])
         # kmeans_centers: KxD
         K = self.K
         D = self.NV.shape[1]
@@ -254,11 +252,10 @@ class mobster_MV():
                 sorted_indices = torch.argsort(values, descending=True) # list of indices ex. 0,2,1
                 # print(sorted_indices)
 
-                init_delta[i,j,sorted_indices[0]] = 0.6 # this can be either pareto, beta or exp
+                init_delta[i,j,sorted_indices[0]] = 0.6 # this can be either pareto, beta or private
                 init_delta[i,j,sorted_indices[1]] = 0.3
                 init_delta[i,j,sorted_indices[2]] = 0.1
-                # if(beta_lk[i,j] > pareto_lk[i,j]):
-
+        print(init_delta)
         return init_delta
 
 
@@ -413,17 +410,17 @@ class mobster_MV():
         return min_vaf
 
     def set_prior_parameters(self):
-        self.max_vaf = torch.tensor(0.55) # for a 1:1 karyotype
+        self.max_vaf = torch.tensor(self.purity/2) # for a 1:1 karyotype
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
         self.phi_beta_L = torch.tensor(0.12)
         # self.phi_beta_L = self.min_vaf
-        self.phi_beta_H = 0.5
-        # self.phi_beta_H = self.max_vaf
+        self.phi_beta_H = self.max_vaf
 
         # k_beta
         self.k_beta_L = torch.tensor(90.)
+        # self.k_beta_L = torch.tensor(0.)
         self.k_beta_init = torch.tensor(200.) # which will be 90+200
         self.k_beta_mean = torch.tensor(200.)
         self.k_beta_std = torch.tensor(0.01)
@@ -674,7 +671,7 @@ class mobster_MV():
         self.alpha_list = []
         self.phi_list = []
         i = 0
-        conv_iter = 100
+        conv_iter = 200
         check_conv = 0
         params = self.get_parameters()
         min_iter = 200
