@@ -317,9 +317,11 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
         axes[d].set_title(f"Dimension {d+1}")
         axes[d].grid(True, color='gray', linestyle='-', linewidth=0.2)
         axes[d].set_xlim([0,1])
+        plt.show()
         plt.tight_layout()
         if savefig:
             plt.savefig(f"plots/{data_folder}/marginals_all_K_{mb.K}_seed_{mb.seed}.png")
+        plt.close()
 
 
 

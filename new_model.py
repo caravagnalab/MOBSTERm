@@ -38,7 +38,7 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234], par_threshold = 0.01, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -61,11 +61,16 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
             # Fai ciclo con 4/5 seed diversi e prendi bic minore
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
+                start_time = time.time()
                 curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, 
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                print(f"Time taken for K = {curr_k} and seed = {curr_seed}: {elapsed_time:.3f} seconds")
+
                 dict = copy.copy(curr_mb[j].__dict__)
                 for key, value in dict.items():
                     if isinstance(value, torch.Tensor):  # Check if the value is a tensor
@@ -107,7 +112,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
 
 class mobster_MV():
     def __init__(self, NV = None, DP = None, K = 1, purity=1, seed=[123,1234], 
-                    par_threshold = 0.01, loss_threshold = 0.01, savefig = False, data_folder = None):
+                    par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
         
@@ -237,10 +242,10 @@ class mobster_MV():
         pareto_lk = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(self.kmeans_centers_no_noise)
 
         zeros_lk = dist.Beta(self.a_beta_zeros, self.b_beta_zeros).log_prob(self.kmeans_centers_no_noise)
-        print(self.kmeans_centers[5,0])
-        print(self.kmeans_centers_no_noise[5,0])
-        print(pareto_lk[5,0])
-        print(beta_lk[5,0])
+        # print(self.kmeans_centers[5,0])
+        # print(self.kmeans_centers_no_noise[5,0])
+        # print(pareto_lk[5,0])
+        # print(beta_lk[5,0])
         # kmeans_centers: KxD
         K = self.K
         D = self.NV.shape[1]
@@ -255,7 +260,7 @@ class mobster_MV():
                 init_delta[i,j,sorted_indices[0]] = 0.6 # this can be either pareto, beta or private
                 init_delta[i,j,sorted_indices[1]] = 0.3
                 init_delta[i,j,sorted_indices[2]] = 0.1
-        print(init_delta)
+        # print(init_delta)
         return init_delta
 
 
@@ -598,7 +603,6 @@ class mobster_MV():
         par = {'phi_beta_param': params["phi_beta_param"],
                'k_beta_param': params["k_beta_param"],
                 'alpha_pareto_param': params['alpha_pareto_param'],
-                'weights_param': params['weights_param'],
                 'delta_param': params['delta_param']} 
         return par
     
@@ -666,10 +670,7 @@ class mobster_MV():
         
         self.losses = []
         self.lks = []
-        self.pi_list = []
-        self.delta_list = []
-        self.alpha_list = []
-        self.phi_list = []
+        self.params_stop_list = {}
         i = 0
         conv_iter = 200
         check_conv = 0
@@ -678,8 +679,13 @@ class mobster_MV():
                
 
         for i in range(num_iter):
-            if i >= min_iter:
-                old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
+            # if i >= min_iter: # posso togliere l'if e prendere qui i parametri da aggiungere alla lista di quelli da printare 
+            old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
+            for key in old_par:
+                if key in self.params_stop_list:
+                    self.params_stop_list[key].append(old_par[key])
+                else:
+                    self.params_stop_list[key] = [old_par[key]]
 
             loss = svi.step()
             self.losses.append(loss)
@@ -696,10 +702,7 @@ class mobster_MV():
 
             # print(params['delta_param'])
             self.lks.append(lks.detach().numpy())
-            self.pi_list.append(params['weights_param'])
-            self.delta_list.append(params['delta_param'])
-            self.phi_list.append(params['phi_beta_param'])
-            self.alpha_list.append(params['alpha_pareto_param'])
+            
             """"""
             if i >= min_iter:
                 new_par = self.get_parameters_stopping(params)
@@ -772,6 +775,31 @@ class mobster_MV():
         
         return lks
     
+    # def compute_euclidean_distance(self, t1, t2):
+    #     # Flatten tensors to vectors
+    #     t1_flat = t1.flatten()
+    #     t2_flat = t2.flatten()
+    #     return torch.norm(t1_flat - t2_flat).item()
+
+    # def compute_max_relative_distance(self, old, new):
+    #     old_flat = old.flatten()
+    #     new_flat = new.flatten()
+    #     # Compute relative distances element-wise
+    #     diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
+    #     # Return the maximum relative distance
+    #     return torch.max(diff_mix).item()
+
+    # def compute_mixing_distances(self, vector):
+    #     distances = []
+    #     distances_euc = []
+    #     for i in range(1, len(vector)):
+    #         # Compute the maximum relative distance for consecutive parameter vectors
+    #         dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
+    #         distances.append(dist)
+    #         dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
+    #         distances_euc.append(dist_euc)
+    #     return distances, distances_euc
+
     def compute_euclidean_distance(self, t1, t2):
         # Flatten tensors to vectors
         t1_flat = t1.flatten()
@@ -785,23 +813,33 @@ class mobster_MV():
         diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
         # Return the maximum relative distance
         return torch.max(diff_mix).item()
-
-    def compute_mixing_distances(self, vector):
-        distances = []
-        distances_euc = []
-        for i in range(1, len(vector)):
-            # Compute the maximum relative distance for consecutive parameter vectors
-            dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
-            distances.append(dist)
-            dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
-            distances_euc.append(dist_euc)
-        return distances, distances_euc
+    
+    def compute_mixing_distances(self, dictionary):
+        results = {}
+        for key, vector in dictionary.items():
+            distances = []
+            distances_euc = []
+            for i in range(1, len(vector)):
+                # Compute the maximum relative distance for consecutive parameter vectors
+                dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
+                distances.append(dist)
+                dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
+                distances_euc.append(dist_euc)
+            # Store results for this key
+            results[key] = {
+                "max_relative_distances": distances,
+                "euclidean_distances": distances_euc,
+            }
+        return results
 
     def plot_loss_lks_dist(self):
-        dist_pi, dist_pi_euc = self.compute_mixing_distances(self.pi_list)
-        dist_delta, dist_delta_euc = self.compute_mixing_distances(self.delta_list)
-        dist_alpha,dist_alpha_euc = self.compute_mixing_distances(self.alpha_list)
-        dist_phi,dist_phi_euc = self.compute_mixing_distances(self.phi_list)
+        # dist_pi, dist_pi_euc = self.compute_mixing_distances(self.pi_list)
+        # dist_delta, dist_delta_euc = self.compute_mixing_distances(self.delta_list)
+        # dist_alpha,dist_alpha_euc = self.compute_mixing_distances(self.alpha_list)
+        # dist_phi,dist_phi_euc = self.compute_mixing_distances(self.phi_list)
+
+        dist = self.compute_mixing_distances(self.params_stop_list)
+
         _, ax = plt.subplots(2, 2, figsize=(15, 15))
         ax[0,0].plot(self.losses)
         ax[0,0].set_title(f"Loss (K = {self.K}, seed = {self.seed})")
@@ -811,21 +849,41 @@ class mobster_MV():
         ax[0,1].set_title(f"Likelihood (K = {self.K}, seed = {self.seed})")
         ax[0,1].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
-        ax[1,0].plot(dist_pi, label="pi")
-        ax[1,0].plot(dist_delta, label="delta")
-        ax[1,0].plot(dist_alpha, label="alpha")
-        ax[1,0].plot(dist_phi, label="phi")
-        ax[1,0].set_title(f"Max relative dist between consecutive iterations")  
-        ax[1,0].grid(True, color='gray', linestyle='-', linewidth=0.2)  
-        ax[1,0].legend()
+        keys = list(self.params_stop_list.keys())
+        for key in keys:
+            dist = dist[key]["max_relative_distances"]
+            dist_euc = dist[key]["euclidean_distances"]
 
-        ax[1,1].plot(dist_pi_euc, label="pi")
-        ax[1,1].plot(dist_delta_euc, label="delta")
-        ax[1,1].plot(dist_alpha_euc, label="alpha")
-        ax[1,1].plot(dist_phi_euc, label="phi")
-        ax[1,1].set_title(f"Euclidean dist between consecutive iterations")  
-        ax[1,1].grid(True, color='gray', linestyle='-', linewidth=0.2)  
-        ax[1,1].legend()   
+            # Plot max relative distances
+            ax[1, 0].plot(dist, label=key)
+
+            # Plot Euclidean distances
+            ax[1, 1].plot(dist_euc, label=key)
+
+        ax[1, 0].set_title("Max relative dist between consecutive iterations")
+        ax[1, 0].grid(True, color='gray', linestyle='-', linewidth=0.2)
+        ax[1, 0].axhline(y=self.par_threshold, color='red', linestyle='--', linewidth=0.8, label=f'Threshold')
+        ax[1, 0].legend()
+
+        ax[1, 1].set_title("Euclidean dist between consecutive iterations")
+        ax[1, 1].grid(True, color='gray', linestyle='-', linewidth=0.2)
+        ax[1, 1].legend()
+
+        # ax[1,0].plot(dist_pi, label="pi")
+        # ax[1,0].plot(dist_delta, label="delta")
+        # ax[1,0].plot(dist_alpha, label="alpha")
+        # ax[1,0].plot(dist_phi, label="phi")
+        # ax[1,0].set_title("Max relative dist between consecutive iterations")  
+        # ax[1,0].grid(True, color='gray', linestyle='-', linewidth=0.2)  
+        # ax[1,0].legend()
+
+        # ax[1,1].plot(dist_pi_euc, label="pi")
+        # ax[1,1].plot(dist_delta_euc, label="delta")
+        # ax[1,1].plot(dist_alpha_euc, label="alpha")
+        # ax[1,1].plot(dist_phi_euc, label="phi")
+        # ax[1,1].set_title("Euclidean dist between consecutive iterations")  
+        # ax[1,1].grid(True, color='gray', linestyle='-', linewidth=0.2)  
+        # ax[1,1].legend()   
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")
