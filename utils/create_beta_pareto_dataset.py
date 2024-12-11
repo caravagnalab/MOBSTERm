@@ -324,11 +324,15 @@ def pareto_binomial_component(alpha=2, L=0.05, H=0.5, phi_beta = 0.5, k_beta = 0
     # x-axis component 1
     p_p = BoundedPareto(scale=L, alpha = alpha, upper_limit = H).sample([N]).float()
     d1[:, 0] = dist.Binomial(total_count=n, probs=p_p).sample()#.squeeze(-1)
+    
+    min_bin = torch.tensor(np.ceil(L * n))
+    d1[:, 0] = torch.max(d1[:, 0], min_bin)
 
     a = phi_beta*k_beta
     b = (1-phi_beta)*k_beta
     p_p = dist.Beta(a, b).sample([N]).float()
     d1[:, 1] = dist.Binomial(total_count=n, probs=p_p).sample()#.squeeze(-1)
+    
     
     DP = torch.ones([N, 2]) * n
     if exchanged == True:

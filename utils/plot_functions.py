@@ -295,7 +295,7 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
             if i in unique:
                 color = cmap(j)  # Get a color from the colormap for each unique label
                 j+=1
-                # bin_width = 8
+                # bin_width = 2
 
                 data_hist = data[(labels == i) & (data != 0)]
                 # data_range = np.max(data_hist) - np.min(data_hist)
@@ -303,7 +303,7 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
                 
 
                 _, _, patches = axes[d].hist(data_hist, 
-                                            bins=30, 
+                                            bins=20, 
                                             edgecolor='white', 
                                             linewidth=1, 
                                             color=color,
@@ -317,11 +317,11 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
         axes[d].set_title(f"Dimension {d+1}")
         axes[d].grid(True, color='gray', linestyle='-', linewidth=0.2)
         axes[d].set_xlim([0,1])
-        plt.show()
-        plt.tight_layout()
-        if savefig:
-            plt.savefig(f"plots/{data_folder}/marginals_all_K_{mb.K}_seed_{mb.seed}.png")
-        plt.close()
+    plt.show()
+    plt.tight_layout()
+    if savefig:
+        plt.savefig(f"plots/{data_folder}/marginals_all_K_{mb.K}_seed_{mb.seed}.png")
+    plt.close()
 
 
 

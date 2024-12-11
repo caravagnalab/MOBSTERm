@@ -851,11 +851,11 @@ class mobster_MV():
 
         keys = list(self.params_stop_list.keys())
         for key in keys:
-            dist = dist[key]["max_relative_distances"]
+            dist_rel = dist[key]["max_relative_distances"]
             dist_euc = dist[key]["euclidean_distances"]
 
             # Plot max relative distances
-            ax[1, 0].plot(dist, label=key)
+            ax[1, 0].plot(dist_rel, label=key)
 
             # Plot Euclidean distances
             ax[1, 1].plot(dist_euc, label=key)
