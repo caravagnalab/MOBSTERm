@@ -9,10 +9,12 @@ plots/
 test_generative/
 saved_objects/
 GBM_data/
+out_files/
 
 *.out
 ._*
 
 .DS_Store
 ._.DS_Store
+*.png
 

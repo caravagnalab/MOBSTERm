@@ -11,23 +11,45 @@ import torch
 def euclidean_distance(a, b):
     return torch.dist(a, b)
 
+
+def sample_mixing_prop(K, min_value=0.05):
+    while True: # loop until valid sample
+        sample = dist.Dirichlet(torch.ones(K)).sample()
+        if (sample > min_value).all():
+            return sample
+    
+
 def pareto_binomial(N, alpha, L, H, depth):
     p = BoundedPareto(scale=L, alpha=alpha, upper_limit=H).sample((N,))
     bin = dist.Binomial(total_count=depth, probs=p).sample()
     min_bin = torch.ceil(L * depth)
-    bin = torch.max(bin, min_bin)
+    max_bin = torch.ceil(H * depth)
+    # bin = torch.max(bin, min_bin)
+    while torch.any(bin > max_bin):
+        mask = bin > max_bin
+        bin[mask] = dist.Binomial(total_count=depth[mask], probs=p[mask]).sample()
+    while torch.any(bin < min_bin):
+        mask = bin < min_bin
+        bin[mask] = dist.Binomial(total_count=depth[mask], probs=p[mask]).sample()
+        
     return bin
 
-def beta_binomial(N, phi, kappa, depth):
+# Define the Beta-Binomial function
+def beta_binomial(N, phi, kappa, depth, L):
     a = phi * kappa
     b = (1 - phi) * kappa
     p = dist.Beta(a, b).sample((N,))
-    return dist.Binomial(total_count=depth, probs=p).sample()
+    bin = dist.Binomial(total_count=depth, probs=p).sample()
+    min_bin = torch.ceil(L * depth)
+    while torch.any(bin < min_bin):
+        mask = bin < min_bin
+        bin[mask] = dist.Binomial(total_count=depth[mask], probs=p[mask]).sample()
+    return bin
 
 
 def generate_data_new_model(N, K, pi, D, purity, coverage):
     NV = torch.zeros((N, D))
-    threshold=0.12
+    threshold=0.15
     cluster_labels = torch.zeros(N)  # one-dimensional labels, one per data
     type_labels_data = torch.zeros((N, D))  # D-dimensional labels, one per data
     type_labels_cluster = torch.zeros((K, D))  # D-dimensional label, one per cluster
@@ -38,8 +60,10 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
     kappa_param_cluster = torch.zeros((K, D))
     alpha_param_cluster = torch.zeros((K, D))
     max_vaf = purity/2
+    min_phi = 0.12
     probs_pareto = 0.08
-
+    pareto_L = torch.tensor(0.05)  # Scale Pareto
+    pareto_H = torch.tensor(max_vaf)  # Upper bound Pareto
     # variance_negbin = 1000
     # mean_negbin = coverage
     # probs_negbin = mean_negbin/variance_negbin
@@ -55,7 +79,7 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
     for d in range(D):
         p = max_vaf
         kappa = dist.Uniform(90, 350).sample()
-        NV[:pi[k], d] = beta_binomial(pi[k], p, kappa, depth[:pi[k],d])
+        NV[:pi[k], d] = beta_binomial(pi[k], p, kappa, depth[:pi[k],d], pareto_L)
         type_labels_data[:pi[k], d] = torch.tensor(1)  # beta
         type_labels_cluster[k, d] = torch.tensor(1)  # beta
         phi_param_data[:pi[k], d] = p
@@ -69,8 +93,7 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
 
     # Always have a Pareto-Binomial component in all dimensions
     k = 1
-    pareto_L = torch.tensor(0.05)  # Scale Pareto
-    pareto_H = torch.tensor(max_vaf)  # Upper bound Pareto
+
     init_idx = np.sum(pi[:k])
     end_idx = init_idx + pi[k]
     for d in range(D):
@@ -99,8 +122,8 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
             for d in range(D):
                 choose_dist = torch.randint(1, 4, (1,)).item() # randomly sample a value between 1, 2 or 3
                 if choose_dist == 1:
-                    phi, kappa = dist.Uniform(0.15, 0.5).sample(), dist.Uniform(90, 350).sample()
-                    NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d])
+                    phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(90, 350).sample()
+                    NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
                     type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
                     type_labels_cluster[k, d] = torch.tensor(1)  # beta
                     phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
@@ -126,8 +149,8 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
                             zeros_count += 1
                             curr_sampled_phi.append(phi)                            
                         else: # beta
-                            phi, kappa = dist.Uniform(0.15, 0.5).sample(), dist.Uniform(90, 350).sample()
-                            NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d])
+                            phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(90, 350).sample()
+                            NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
                             type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
                             type_labels_cluster[k, d] = torch.tensor(1)  # beta
                             phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
@@ -168,8 +191,8 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
                             pareto_count += 1
                             curr_sampled_phi.append(probs_pareto)
                         else: # beta
-                            phi, kappa = dist.Uniform(0.15, 0.5).sample(), dist.Uniform(90, 350).sample()
-                            NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d])
+                            phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(90, 350).sample()
+                            NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
                             type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
                             type_labels_cluster[k, d] = torch.tensor(1)  # beta
                             phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
@@ -190,7 +213,7 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
                         kappa_param_cluster[k, d] = -1
                         alpha_param_cluster[k, d] = -1
                         zeros_count += 1
-                        curr_sampled_phi.append(phi)
+                        curr_sampled_phi.append(pareto_L - threshold)
 
             
             # Convert curr_sampled_phi to a tensor
@@ -205,7 +228,6 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
                 sampled_phi_list.append(curr_sampled_phi_tensor)
                 break  # Move to the next cluster
     return NV, depth, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster
-
 
 
 def generate_data(N, K, pi, D):
@@ -307,7 +329,7 @@ def generate_data(N, K, pi, D):
     depth = torch.tensor(120).repeat((N, D))  # Fixed depth
     return NV, depth, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data
 
-# ---------------#
+
 def pareto_binomial_component(alpha=2, L=0.05, H=0.5, phi_beta = 0.5, k_beta = 0.5, n=100, N=1000, exchanged = False, seed = 123):
     """
     Create pareto-binomial component. 

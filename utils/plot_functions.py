@@ -11,45 +11,7 @@ from utils.BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.cm as cm
 
-
 def plot_deltas(mb, savefig = False, data_folder = None):
-    deltas = mb.params["delta_param"]
-    if torch.is_tensor(deltas):
-        deltas = deltas.detach().numpy()
-    else:
-        deltas = np.array(deltas)
-    if deltas.shape[0] == 1:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, 1.5))  # Custom size for 1 plot
-        ax = [ax]  # add an extra dimension to make it 2D
-    else:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, mb.K*1))
-    
-    plt.suptitle(f"Delta with K={mb.K}, seed={mb.seed}", fontsize=14)
-    fig.tight_layout() 
-    for k in range(deltas.shape[0]):
-        sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap="crest")
-        # ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Sample")
-        # ax[k].set(xlabel="Distributions", ylabel="Sample")
-        # ax[k].set_yticklabels([1, 2])
-        num_rows = deltas[k].shape[0]
-        ax[k].set_yticks([i + 0.5 for i in range(num_rows)])  # Center ticks in the middle of each row
-        ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
-
-        # Set x-tick labels
-        ax[k].set_xticklabels(["Pareto", "Beta"], rotation=0)
-
-        # Setting x and y labels for the subplot
-        ax[k].set(xlabel="", ylabel="Sample")
-        if k == (deltas.shape[0] - 1):
-            ax[k].set(xlabel="Distributions")
-        ax[k].set_title(f"Cluster {k}", fontsize=14)
-    seed = mb.seed
-    if savefig:
-        plt.savefig(f"plots/{data_folder}/deltas_K_{mb.K}_seed_{seed}.png")
-    plt.show()
-    plt.close()
-
-def plot_deltas_new(mb, savefig = False, data_folder = None):
     deltas = mb.params["delta_param"].detach().numpy()
     if deltas.shape[0] == 1:
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, 1.5))  # Custom size for 1 plot
@@ -158,7 +120,7 @@ def plot_betas(mb, savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
-def plot_marginals(mb,  savefig = False, data_folder = None):
+def plot_marginals_no_color(mb,  savefig = False, data_folder = None):
     delta = mb.params["delta_param"]  # K x D x 2
     if not torch.is_tensor(delta):
         delta = torch.tensor(delta)
@@ -243,8 +205,6 @@ def plot_marginals(mb,  savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
-
-
 def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
     # delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"]
@@ -323,9 +283,7 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
         plt.savefig(f"plots/{data_folder}/marginals_all_K_{mb.K}_seed_{mb.seed}.png")
     plt.close()
 
-
-
-def plot_marginals_new(mb, savefig = False, data_folder = None):
+def plot_marginals(mb, savefig = False, data_folder = None):
     delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"]
     if torch.is_tensor(phi_beta):
@@ -414,7 +372,6 @@ def plot_marginals_new(mb, savefig = False, data_folder = None):
         plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
     plt.show()
     plt.close()
-
 
 def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     # Extract weights and convert to numpy if needed
