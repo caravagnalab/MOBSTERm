@@ -6,7 +6,9 @@ __pycache__/
 
 # Ignore
 plots/
-test_generative/
+test_generative/test_generative_2d/
+test_generative/test_generative_3d/
+test_generative/test_generative_4d/
 saved_objects/
 GBM_data/
 out_files/
