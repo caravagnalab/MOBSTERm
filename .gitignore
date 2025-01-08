@@ -9,6 +9,7 @@ plots/
 test_generative/test_generative_2d/
 test_generative/test_generative_3d/
 test_generative/test_generative_4d/
+test_generative/new_model/saved_objects/
 saved_objects/
 GBM_data/
 out_files/
