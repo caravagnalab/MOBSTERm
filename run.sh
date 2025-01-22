@@ -1,14 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=set
+#SBATCH --job-name=fit
 #SBATCH --account=cdslab
 #SBATCH --no-requeue
-#SBATCH -N1
-#SBATCH -n4
-#SBATCH --cpus-per-task=8
-#SBATCH -p EPYC
+#SBATCH --cpus-per-task=12
+#SBATCH -p THIN
 #SBATCH --time=24:00:00
-#SBATCH --mem=200gb
-#SBATCH --output=./out_files/set7.out
+#SBATCH --mem=100gb
+#SBATCH --output=./out_files/set7_delta_.out
 
 python3 run_new_model.py
 

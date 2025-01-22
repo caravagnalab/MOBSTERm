@@ -31,7 +31,7 @@ def plot_deltas(mb, savefig = False, data_folder = None):
         ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
 
         # Set x-tick labels
-        ax[k].set_xticklabels(["Pareto", "Beta", "Zeros"], rotation=0)
+        ax[k].set_xticklabels(["Pareto", "Beta", "Dirac"], rotation=0)
 
         # Setting x and y labels for the subplot
         ax[k].set(xlabel="", ylabel="Sample")
@@ -261,9 +261,11 @@ def plot_marginals_alltogether(mb, savefig = False, data_folder = None):
                 # data_range = np.max(data_hist) - np.min(data_hist)
                 # num_bins = int(np.ceil(data_range / bin_width))
                 
-
+                n_bins = min(int(np.ceil(np.sqrt(len(data_hist)))),30)
+                if n_bins == 0:
+                    n_bins = 10
                 _, _, patches = axes[d].hist(data_hist, 
-                                            bins=20, 
+                                            bins=n_bins, 
                                             edgecolor='white', 
                                             linewidth=1, 
                                             color=color,
@@ -350,7 +352,7 @@ def plot_marginals(mb, savefig = False, data_folder = None):
             else:
                 # private
                 pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
-                axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
                 axes[k,d].legend()
 
             if torch.is_tensor(mb.NV):
@@ -359,7 +361,8 @@ def plot_marginals(mb, savefig = False, data_folder = None):
                 data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
             # for i in np.unique(labels):
             if k in unique_labels:
-                axes[k, d].hist(data[labels == k],  density=True, bins=30, alpha=1, color=color_mapping[k])
+                n_bins = min(int(np.ceil(np.sqrt(len(data[labels == k])))),40)
+                axes[k, d].hist(data[labels == k],  density=True, bins=n_bins, alpha=1, color=color_mapping[k])
             else:
                 # Plot an empty histogram because we know there are no points in that k
                 axes[k, d].hist([], density=True, bins=30, alpha=1)
@@ -415,7 +418,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     # Plot 2: Number of Points per Cluster
     plt.subplot(1, 2, 2)
     num_points_per_cluster = torch.bincount(labels)
-    print(num_points_per_cluster)
+    # print(num_points_per_cluster)
     bars2 = []
     for i in range(len(num_points_per_cluster)):
         if i in unique_labels:

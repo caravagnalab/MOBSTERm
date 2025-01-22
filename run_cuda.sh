@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=K_3
+#SBATCH --job-name=fit
 #SBATCH --account=cdslab
 #SBATCH --no-requeue
 #SBATCH -N1
@@ -9,7 +9,7 @@
 #SBATCH --gpus=1
 #SBATCH --time=18:00:00
 #SBATCH --mem=200gb
-#SBATCH --output=./out_files/real_data_high_K_3.out
+#SBATCH --output=./out_files/gbm.out
 
 python3 run_new_model.py
 

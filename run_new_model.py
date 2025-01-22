@@ -1,4 +1,6 @@
-import new_model2 as model_mobster_mv
+# import new_model_integration as model_mobster_mv
+# import new_model as model_mobster_mv
+import model_mobster as model_mobster_mv
 import numpy as np
 import pandas as pd
 import pyro.distributions as dist
@@ -19,6 +21,9 @@ from utils.create_beta_pareto_dataset import *
 import os
 import time
 
+data_folder = 'new_run/w/set7_delta_'
+
+purity = 1
 """
 N1 = 500
 N2 = 500
@@ -99,19 +104,19 @@ NV = torch.concat((NV,NV6))
 DP = torch.concat((DP,DP6))
 """
 
-data_folder = 'set6_w'
-"""
+
+
+
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
 sets = [55, 57, 59, 62]
 s_number = 7
 """
-
 data = pd.read_csv("./data/real_data/Set6_mutations.csv")
 
 sets = [42, 44, 45, 46, 47, 48]
 s_number = 6
-
+"""
 
 NV_list = []
 DP_list = []
@@ -123,9 +128,11 @@ for s in sets:
     NV_list.append(NV.view(-1, 1))  # Ensure correct shape
     DP_list.append(DP.view(-1, 1))  # Ensure correct shape
 
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+
 """
-data_folder = 'gbm_long'
-data = pd.read_csv("./data/gbm.csv")
+data = pd.read_csv("./data/gbm_B7R7.csv")
 
 sets = ['primary', 'relapse']
 
@@ -138,11 +145,17 @@ for s in sets:
     
     NV_list.append(NV.view(-1, 1))  # Ensure correct shape
     DP_list.append(DP.view(-1, 1))  # Ensure correct shape
-
-"""
-
 NV = torch.cat(NV_list, dim=1)
 DP = torch.cat(DP_list, dim=1)
+purity = 0.9
+"""
+"""
+NV = pd.read_csv("./data/hitchhikers/NV_bigger2.csv")
+DP = pd.read_csv("./data/hitchhikers/DP_bigger2.csv")
+
+NV = torch.tensor(NV.values)
+DP = torch.tensor(DP.values)
+"""
 
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
@@ -198,7 +211,7 @@ for i, j in zip(*pairs):
     x = vaf[:, i].numpy()
     y = vaf[:, j].numpy()
 
-    ax.scatter(x, y, alpha=0.7)
+    ax.scatter(x, y, alpha=0.7, s = 20)
 
     ax.set_title(f"Sample {i+1} vs Sample {j+1}")
     ax.set_xlabel(f"Sample {i+1}")
@@ -213,11 +226,11 @@ plt.close()
 
 fig, axes = plt.subplots(1, D, figsize=(5*D, 4))
 plt.suptitle("Marginals")
-
+n_bins = int(np.ceil(np.sqrt(len(vaf))))
 for i in range(D):
     x = vaf[:, i].numpy()
     x = x[x > 0]
-    axes[i].hist(x, bins = 80)    
+    axes[i].hist(x, bins = n_bins)    
     
     axes[i].set_xlabel(f"Sample {i+1}")
     axes[i].set_xlim([0,1])
@@ -228,18 +241,15 @@ plt.close()
 
 save = True
 seed_list = [41,42]
-# K_list = [11,12,13,14,15,16,17,18]
-K_list = [3,4,5,6,7,8,9, 10, 11, 12]
+K_list = [15,16,17,18,19,20,21,22]
+# K_list = [4,5,6,7,8,9,10,11]
 # Record the start time
 start_time = time.time()
 
-_, best_K, best_seed = model_mobster_mv.fit(NV, DP, num_iter=3000, K=K_list, seed=seed_list, lr=0.01, savefig=save, data_folder=data_folder)
+_, best_K, best_seed = model_mobster_mv.fit(NV, DP, num_iter=2000, K=K_list, seed=seed_list, lr=0.01, savefig=save, data_folder=data_folder, purity = purity)
 
-# Record the end time
 end_time = time.time()
-# Calculate the time elapsed
 elapsed_time = end_time - start_time
-# Print the elapsed time
 print(f"Time taken for the fit function: {elapsed_time:.2f} seconds")
 
 
@@ -264,9 +274,9 @@ mb_list = []
 for i in range(len(seed_list)*len(K_list)):
     K = loaded_list[i]['K']
     seed = loaded_list[i]['seed']
-    mb_list.append(model_mobster_mv.mobster_MV())
+    mb_list.append(model_mobster_mv.mobster_MV(seed = seed))
     mb_list[i].__dict__ = loaded_list[i]
-    print(f'K = {mb_list[i].K}, seed = {mb_list[i].seed}')
+    # print(f'K = {mb_list[i].K}, seed = {mb_list[i].seed}')
 
 #  Create a dataframe with all the results
 def highlight_min(data):
@@ -361,7 +371,7 @@ plt.scatter(K_list, bic_list, color='black', zorder=5)
 min_index_bic = np.argmin(bic_list)
 plt.scatter(K_list[min_index_bic], bic_list[min_index_bic], color='r', zorder=10)  
 plt.legend()
-plt.grid(True, color='gray', linestyle='-', linewidth=0.2)  
+plt.grid(True, color='gray', linestyle='-', linewidth=0.2)
 
 # Subplot 3: ICL over K
 plt.subplot(1, 3, 3)
