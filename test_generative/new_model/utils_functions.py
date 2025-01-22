@@ -22,7 +22,6 @@ import os
 # Set the parent directory
 parent_dir = "../../"
 sys.path.insert(0, parent_dir)
-import new_model as mobster_mv
 from utils.plot_functions import *
 from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
@@ -54,6 +53,18 @@ def create_folder(N,K,D,purity,coverage):
         os.makedirs(folder_path)
 
     folder_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/csv'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    folder_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/init_nmi'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    folder_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/init_ari'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    folder_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/init_csv'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
@@ -90,6 +101,10 @@ def create_folder(N,K,D,purity,coverage):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
+    folder_path = f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/initialization'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
     folder_path = f'saved_objects/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -117,9 +132,11 @@ def plot_final(mb, N, K, idx_real, purity, coverage):
             if maxx == 0: # Pareto
                 dist_d.append(0)
                 # pred_dist[k,d] = 0
-            else:
+            elif maxx == 1: # Beta
                 dist_d.append(1)
                 # pred_dist[k,d] = 1
+            elif maxx == 2: # Dirac
+                dist_d.append(2)
         pred_dist.append(dist_d)
         
     D = NV.shape[1]
@@ -149,7 +166,7 @@ def plot_final(mb, N, K, idx_real, purity, coverage):
             mask = (labels == cluster)  # Mask for current cluster
             ax.scatter(x[mask], 
                         y[mask],
-                        label=f'{cluster.astype("int")} {pred_dist[c]}')
+                        label=f'{cluster.astype("int")} {pred_dist[c]}', s = 10)
         ax.legend(loc='best')
         ax.set_title(f'Sample {i+1} vs Sample {j+1}')
         ax.set_xlabel(f'Sample {i+1}')
@@ -160,6 +177,90 @@ def plot_final(mb, N, K, idx_real, purity, coverage):
     plt.suptitle(f'Inference with N = {N} and {K} clusters (i = {idx_real}) \n ')
     plt.show()
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/inference/N_{N}_K_{K}_D_{mb.NV.shape[1]}_inference_{idx_real}.png')
+    plt.close()
+
+def plot_initialization(mb, N, K, idx_real, purity, coverage):
+    NV = mb.NV
+    DP = mb.DP
+    D = NV.shape[1]
+
+    plt.figure()
+    unique_labels = np.unique(mb.kmeans_labels)
+    cmap = cm.get_cmap('tab20')
+    color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+    colors = [color_mapping[label] for label in mb.kmeans_labels.detach().numpy()]
+
+    # sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = self.kmeans_labels, s = 20)
+    # legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
+    # plt.gca().add_artist(legend1)
+
+    sc = plt.scatter(NV[:,0]/DP[:,0], NV[:,1]/DP[:,1], c=colors, s=20)  # tab20
+    handles = [plt.Line2D([0], [0], marker='o', color='w', label=f"{label}",
+                        markerfacecolor=color_mapping[label], markersize=10) 
+            for label in unique_labels]
+    plt.legend(handles=handles)
+
+    plt.scatter(mb.kmeans_centers_no_noise[:, 0], 
+                mb.kmeans_centers_no_noise[:, 1], color='red', marker='x', s=25)
+    plt.title(f"Scatter init (K = {K}, seed = {mb.seed})")
+    plt.xlim([0,1])
+    plt.ylim([0,1])
+    plt.show()
+    plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/initialization/N_{N}_K_{K}_D_{mb.NV.shape[1]}_scatter_{idx_real}.png')
+    plt.close()
+
+    if mb.K == 1:
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, 4))
+    else:
+        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, K*3))
+    if mb.K == 1:
+        axes = ax = np.array([axes])  # add an extra dimension to make it 2D
+    plt.suptitle(f"Starting kmeans marginals with K={K}, seed={mb.seed}",fontsize=14)
+    x = np.linspace(0.001, 1, 1000)
+
+    cmap = cm.get_cmap('tab20')
+    color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+    phi = mb.kmeans_centers
+    for k in range(mb.K):
+        for d in range(mb.NV.shape[1]):
+            delta_kd = mb.init_delta[k, d]
+            maxx = torch.argmax(delta_kd)
+            if maxx == 1:
+                # plot beta
+                a = phi[k,d] * mb.k_beta_init
+                b = (1-phi[k,d]) * mb.k_beta_init
+                pdf = beta.pdf(x, a, b)# * weights[k]
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+                axes[k,d].legend()
+            elif maxx == 0:
+                # plot pareto
+                pdf = pareto.pdf(x, mb.alpha_pareto_init, scale=mb.pareto_L) #* weights[k]
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
+                axes[k,d].legend()
+            else:
+                # private
+                pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
+                axes[k,d].legend()
+
+            if torch.is_tensor(NV):
+                data = NV[:,d].numpy()/DP[:,d].numpy()
+            else:
+                data = np.array(NV[:,d])/np.array(DP[:,d])
+            # for i in np.unique(labels):
+            if k in unique_labels:
+                axes[k, d].hist(data[mb.kmeans_labels == k],  density=True, bins=30, alpha=1, color=color_mapping[k])
+            else:
+                # Plot an empty histogram because we know there are no points in that k
+                axes[k, d].hist([], density=True, bins=30, alpha=1)
+            axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
+            axes[k,d].grid(True, color='gray', linestyle='-', linewidth=0.2)
+            # axes[k,d].set_ylim([0,25])
+            axes[k,d].set_xlim([-0.01,0.8])
+            plt.tight_layout()
+
+    plt.show()
+    plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/initialization/N_{N}_K_{K}_D_{mb.NV.shape[1]}_marginals_{idx_real}.png')
     plt.close()
 
 def plot_final_marginals(mb, N, K, D, idx_real, purity, coverage):
@@ -225,7 +326,7 @@ def plot_final_marginals(mb, N, K, D, idx_real, purity, coverage):
             else:
                 # private
                 pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
-                axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
+                axes[k,d].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
                 axes[k,d].legend()
 
             if torch.is_tensor(mb.NV):
@@ -246,7 +347,6 @@ def plot_final_marginals(mb, N, K, D, idx_real, purity, coverage):
     plt.show()
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/inference_marginals/N_{N}_K_{K}_D_{mb.NV.shape[1]}_inference_{idx_real}.png')
     plt.close()
-
 
 def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_real, purity, coverage):
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
@@ -275,7 +375,7 @@ def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_
             mask = (cluster_labels == cluster)  # Mask for current cluster
             ax.scatter(x[mask], 
                         y[mask],
-                        label=f'{cluster.astype("int")} {type_labels_cluster[c].tolist()}')
+                        label=f'{cluster.astype("int")} {type_labels_cluster[c].tolist()}', s = 10)
         ax.legend(loc='best')
         ax.set_title(f'Sample {i+1} vs Sample {j+1}')
         ax.set_xlabel(f'Sample {i+1}')
@@ -287,7 +387,6 @@ def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_
     plt.show()
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real/N_{N}_K_{K}_D_{D}_real_{idx_real}.png')
     plt.close()
-
 
 def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage):
     vaf = NV/DP
@@ -345,8 +444,6 @@ def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, ph
     plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals/N_{N}_K_{K}_D_{D}_real_{idx}.png')
     plt.close()
 
-
-
 def retrieve_info(mb, N, D):
     pred_cluster_labels = mb.params['cluster_assignments']
     delta = mb.params["delta_param"]
@@ -376,8 +473,48 @@ def retrieve_info(mb, N, D):
                 kappa_param_data[mask,d] = torch.round(kappa[k, d] * 1000) / 1000
                 alpha_param_data[mask,d] = -1
                 # pred_param_list_data[mask][d] = [phi[k,d], kappa[k,d], None]
-        
+            else:
+                # private
+                pred_type_labels_data[mask,d] = 2
+                phi_param_data[mask,d] = -1
+                kappa_param_data[mask,d] = -1
+                alpha_param_data[mask,d] = -1
+
     return pred_cluster_labels, pred_type_labels_data, phi_param_data, kappa_param_data, alpha_param_data
+
+
+def retrieve_info_init(mb, N, D):
+    pred_cluster_labels = mb.kmeans_labels
+    delta = mb.init_delta
+    phi = mb.kmeans_centers_no_noise
+    alpha = mb.alpha_pareto_init
+    pred_type_labels_data = torch.zeros((mb.NV.shape[0],mb.NV.shape[1]))
+    
+    phi_param_data = torch.zeros((N,D))
+    alpha_param_data = torch.zeros((N,D))
+
+    for i, k in enumerate(np.unique(pred_cluster_labels)):
+        mask = (pred_cluster_labels == k)  # Mask for current cluster
+        for d in range(mb.NV.shape[1]):
+            delta_kd = delta[k, d]
+            maxx = torch.argmax(delta_kd)
+            if maxx == 0: # Pareto
+                pred_type_labels_data[mask,d] = 0
+                phi_param_data[mask,d] = -1
+                alpha_param_data[mask,d] = alpha
+                # pred_param_list_data[mask][d] = [None, None, alpha[k,d]]
+            elif maxx == 1:
+                pred_type_labels_data[mask,d] = 1
+                phi_param_data[mask,d] = torch.round(phi[k, d] * 1000) / 1000
+                alpha_param_data[mask,d] = -1
+                # pred_param_list_data[mask][d] = [phi[k,d], kappa[k,d], None]
+            else:
+                # private
+                pred_type_labels_data[mask,d] = 2
+                phi_param_data[mask,d] = -1
+                alpha_param_data[mask,d] = -1
+
+    return pred_cluster_labels, pred_type_labels_data, phi_param_data, alpha_param_data
 
 
 def plot_deltas_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
@@ -400,7 +537,7 @@ def plot_deltas_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
         ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
 
         # Set x-tick labels
-        ax[k].set_xticklabels(["Pareto", "Beta", "Zeros"], rotation=0)
+        ax[k].set_xticklabels(["Pareto", "Beta", "Dirac"], rotation=0)
 
         # Setting x and y labels for the subplot
         ax[k].set(xlabel="", ylabel="Sample")
@@ -413,7 +550,6 @@ def plot_deltas_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
         plt.savefig(folder)
     plt.show()
     plt.close()
-
 
 def plot_responsib_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
     
@@ -432,7 +568,6 @@ def plot_responsib_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
         plt.savefig(folder)
     plt.show()
     plt.close()
-
 
 def plot_paretos_gen(mb, N, K, D, idx, savefig = False, data_folder = None):
     check = False
@@ -469,7 +604,6 @@ def plot_paretos_gen(mb, N, K, D, idx, savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
-
 def plot_betas_gen(mb, N, K, D, idx,savefig = False, data_folder = None):
     phi_beta = mb.params["phi_beta_param"].detach().numpy()
     kappa_beta = mb.params["k_beta_param"].detach().numpy()
@@ -495,7 +629,6 @@ def plot_betas_gen(mb, N, K, D, idx,savefig = False, data_folder = None):
         plt.savefig(folder)
     plt.show()
     plt.close()
-
 
 def plot_loss_lks_gen(mb, N, K, D, idx, savefig = True, data_folder = None):
     # dist_pi, dist_pi_euc = mb.compute_mixing_distances(mb.pi_list)
@@ -539,7 +672,6 @@ def plot_loss_lks_gen(mb, N, K, D, idx, savefig = True, data_folder = None):
         plt.savefig(folder)
     plt.show()
     plt.close()
-
 
 def plot_model_selection_gen(mb_list, N, K_list, K, seed_list, D, idx, savefig = True, data_folder = None):
     lk_list = []

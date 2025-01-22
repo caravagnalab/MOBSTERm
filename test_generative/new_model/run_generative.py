@@ -19,11 +19,12 @@ import argparse
 import sys
 import os
 from utils_functions import *
+import model_mobster_gmm as mobster_mv
 
 # Set the parent directory
 parent_dir = "../../"
 sys.path.insert(0, parent_dir)
-import new_model as mobster_mv
+# import new_model as mobster_mv
 from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
 
@@ -52,7 +53,8 @@ if __name__ == "__main__":
 
     nmi_list = []
     ari_list = []
-    acc_list = []
+    nmi_list_init = []
+    ari_list_init = []
     conf_matrix_list = []
     seed = 0
     for idx in range(num_dataset):
@@ -94,7 +96,8 @@ if __name__ == "__main__":
         mb = mb_list[K_list.index(best_K)]
         
         pred_cluster_labels, pred_type_labels_data, pred_phi_param_data, pred_kappa_param_data, pred_alpha_param_data = retrieve_info(mb, N, D)
-
+        
+        plot_initialization(mb, N, K, idx, purity, coverage)
         plot_final(mb, N, K, idx, purity, coverage)
         plot_final_marginals(mb, N, K, D, idx, purity, coverage)
         # plt.savefig(f"plots/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/real_marginals/N_{N}_K_{K}_D_{D}_real_{idx}.png")
@@ -144,6 +147,26 @@ if __name__ == "__main__":
         with open(filename, 'w') as f:
             f.write(json.dumps(dict_copy) + '\n')
             
+        pred_cluster_labels_init, pred_type_labels_data_init, pred_phi_param_data_init, pred_alpha_param_data_init = retrieve_info_init(mb, N, D)
+        column_names = ['NV', 'DP', 'True_cluster', 'Pred_cluster', 
+            'True_distribution', 'Pred_distribution', 'True_phi', 'Pred_phi', 
+            'True_alpha', 'Pred_alpha']
+        df = pd.DataFrame(columns=column_names)
+
+        df['NV'] = [[round(val, 3) for val in row.tolist()] for row in NV]
+        df['DP'] = [[round(val, 3) for val in row.tolist()] for row in DP]
+        df['True_cluster'] = cluster_labels.tolist()  # No rounding needed, they are integer labels
+        df['Pred_cluster'] = pred_cluster_labels_init.tolist()
+        df['True_distribution'] = [[round(val, 3) for val in row.tolist()] for row in type_labels_data]
+        df['Pred_distribution'] = [[round(val, 3) for val in row.tolist()] for row in pred_type_labels_data_init]
+        df['True_phi'] = [[round(val, 3) for val in row.tolist()] for row in phi_param_data]
+        df['Pred_phi'] = [[round(val, 3) for val in row.tolist()] for row in pred_phi_param_data_init]
+        df['True_alpha'] = [[round(val, 3) for val in row.tolist()] for row in alpha_param_data]
+        df['Pred_alpha'] = [[round(val, 3) for val in row.tolist()] for row in pred_alpha_param_data_init]
+
+        csv_filename = f'./results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/init_csv/N_{N}_K_{K}_D_{D}_df_{idx}.csv'
+        df.to_csv(csv_filename, index=False)
+
         # Measure NMI
         true_labels = cluster_labels
         predicted_labels = pred_cluster_labels
@@ -154,6 +177,15 @@ if __name__ == "__main__":
         ari = adjusted_rand_score(true_labels, predicted_labels)
         ari_list.append(ari)
 
+        # Measure NMI init
+        predicted_labels_init = pred_cluster_labels_init
+
+        nmi_init = normalized_mutual_info_score(true_labels, predicted_labels_init)
+        nmi_list_init.append(nmi_init)
+
+        ari_init = adjusted_rand_score(true_labels, predicted_labels_init)
+        ari_list_init.append(ari_init)
+
     filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/nmi/nmi_N_{N}_K_{K}_D_{D}.txt"
     with open(filename, "w") as file:
         for item in nmi_list:
@@ -162,6 +194,16 @@ if __name__ == "__main__":
     filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/ari/ari_N_{N}_K_{K}_D_{D}.txt"
     with open(filename, "w") as file:
         for item in ari_list:
+            file.write(f"{item}\n")  # Writing each item on a new line
+
+    filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/init_nmi/nmi_N_{N}_K_{K}_D_{D}.txt"
+    with open(filename, "w") as file:
+        for item in nmi_list_init:
+            file.write(f"{item}\n")  # Writing each item on a new line
+
+    filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/init_ari/ari_N_{N}_K_{K}_D_{D}.txt"
+    with open(filename, "w") as file:
+        for item in ari_list_init:
             file.write(f"{item}\n")  # Writing each item on a new line
 
         """
