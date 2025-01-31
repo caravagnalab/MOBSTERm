@@ -20,6 +20,7 @@ test_generative/new_model_kmeans/results/
 saved_objects/
 GBM_data/
 out_files/
+data/
 
 *.out
 ._*

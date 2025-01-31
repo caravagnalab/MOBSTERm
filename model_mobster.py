@@ -44,7 +44,7 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -74,6 +74,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
                 plot_scatter_inference(curr_mb[j])
+                plot_marginals_inference(curr_mb[j])
                 end_time = time.time()
                 elapsed_time = end_time - start_time
                 print(f"Time taken for K = {curr_k} and seed = {curr_seed}: {elapsed_time:.3f} seconds")
@@ -100,7 +101,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                         f.write(json.dumps(dict_copy) + '\n')  # Write as a JSON string
             
             plot_marginals(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
             plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
@@ -119,7 +120,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, purity=1, seed=[123,1234], 
+    def __init__(self, NV = None, DP = None, K = 1, purity=None, seed=[123,1234], 
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
@@ -147,7 +148,10 @@ class mobster_MV():
             DP = DP[cond,:]
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
         self.K = K
-        self.purity = purity
+        if  NV is not None and purity is not None:
+            self.purity = purity
+        else:
+            self.purity = torch.ones(NV.shape[1])
         self.seed = seed
         self.par_threshold = par_threshold
         self.loss_threshold = loss_threshold
@@ -215,7 +219,8 @@ class mobster_MV():
         # print("Kmeans centers:", self.kmeans_centers_no_noise)
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        self.kmeans_centers_no_noise = torch.minimum(self.kmeans_centers_no_noise, self.max_vaf.unsqueeze(0) - 1e-5)
 
 
     def noise_kmeans(self):
@@ -231,14 +236,14 @@ class mobster_MV():
         # -----------------Gaussian noise------------------#
         
         # Clip probabilities in [min_vaf, 0.999]
-        self.best_centers[self.best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L) + 1e-5 # used as initial value of phi_beta
+        # self.best_centers[self.best_centers <= self.phi_beta_L] = self.phi_beta_L + 1e-5 # used as initial value of phi_beta
+        # print(self.best_centers)
+        self.best_centers = torch.maximum(self.best_centers, self.phi_beta_L.unsqueeze(0) + 1e-5)
+        # print(self.best_centers)
         # best_centers[best_centers <= 0] = 1 - 0.999
-        self.best_centers[self.best_centers >= self.max_vaf] = self.max_vaf - 1e-5
+        # self.best_centers[self.best_centers >= self.max_vaf] = self.max_vaf - 1e-5
+        self.best_centers = torch.minimum(self.best_centers, self.max_vaf.unsqueeze(0) - 1e-5)
         self.kmeans_centers = self.best_centers
-        # self.kmeans_centers = self.kmeans_centers_no_noise
-        # print(self.kmeans_centers)
-
-        # print("self.init_weights: ", self.init_weights)
         """
         # INITIALIZE KAPPAS
         centroids = kmeans.cluster_centers_
@@ -427,14 +432,14 @@ class mobster_MV():
         dir = dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return dir # simply does log(weights) + log(density)
 
-    def pareto_binomial_pmf(self, NV, DP, alpha):
+    def pareto_binomial_pmf(self, NV, DP, alpha, H):
         integration_points=5000
         # Generate integration points across all rows at once
-        t = torch.linspace(self.pareto_L, self.pareto_H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
+        t = torch.linspace(self.pareto_L, H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
         NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], 1)
         DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], 1)
         binom_vals = dist.Binomial(total_count=DP_expanded, probs=t).log_prob(NV_expanded).exp()
-        pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()  # Shape (1, integration_points)
+        pareto_vals = BoundedPareto(self.pareto_L, alpha, H).log_prob(t).exp()  # Shape (1, integration_points)
         integrand = binom_vals * pareto_vals
 
         pmf_x = torch.trapz(integrand, t, dim=-1).log()  # Shape (NV.shape[0], NV.shape[1])
@@ -442,7 +447,7 @@ class mobster_MV():
         return pmf_x.tolist()  # Convert the result to a list
 
     def pareto_lk_integr(self, d, alpha):
-        paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
+        paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha, H = self.pareto_H[d]))
         return paretobin # tensor of len N (if D = 1, only N)
     
     def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
@@ -583,11 +588,11 @@ class mobster_MV():
         return min_vaf
 
     def set_prior_parameters(self):
-        self.max_vaf = torch.tensor(self.purity/2) # for a 1:1 karyotype
+        self.max_vaf = torch.tensor(self.purity)/2 # for a 1:1 karyotype, tensor D x 1
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
-        self.phi_beta_L = torch.tensor(0.1)
+        self.phi_beta_L = torch.ones(self.NV.shape[1])*0.1
         # self.phi_beta_L = self.min_vaf
         self.phi_beta_H = self.max_vaf
 
