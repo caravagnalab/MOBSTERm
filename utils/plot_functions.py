@@ -10,6 +10,8 @@ from scipy.stats import beta, pareto, expon
 from utils.BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.cm as cm
+import pandas as pd
+from itertools import combinations
 
 def plot_deltas(mb, savefig = False, data_folder = None):
     deltas = mb.params["delta_param"].detach().numpy()
@@ -443,3 +445,55 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     else:
         plt.show()
     plt.close()
+
+
+def plot_scatter_inference(mb):
+        """
+        Plot the results.
+        """
+        D = mb.NV.shape[1]
+        pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
+        vaf = mb.NV / mb.DP
+        
+        columns=[f"Sample {d+1}" for d in range(D)]
+        df = pd.DataFrame(vaf.numpy(), columns=columns)
+        labels = mb.params["cluster_assignments"].detach().numpy()
+        df['Label'] = labels
+        
+        pairs = list(combinations(columns, 2))  # Unique pairs of samples
+
+        if len(pairs) == 1:
+            # If there is only one pair, plot it in a single figure
+            x_col, y_col = pairs[0]
+            plt.figure(figsize=(5, 5))
+            ax = sns.scatterplot(data=df, x=x_col, y=y_col, hue='Label', palette='Set1', s=20)
+            ax.grid(True, linestyle='-', linewidth=0.7, color='grey', alpha=0.6)
+            plt.title(f'{x_col} vs {y_col}')
+            plt.xlabel(x_col)
+            plt.ylabel(y_col)
+        else:
+            # General case for multiple pairs
+            num_pairs = len(pairs)
+            ncols = min(3, num_pairs)
+            nrows = (num_pairs + ncols - 1) // ncols
+
+            fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+            axes = axes.flatten()
+
+            for ax, (x_col, y_col) in zip(axes, pairs):
+                sns.scatterplot(data=df, x=x_col, y=y_col, hue='Label', palette='Set1', ax=ax, s=20)
+                ax.grid(True, linestyle='--', linewidth=0.7, color='grey', alpha=0.6)
+                ax.set_title(f'{x_col} vs {y_col}')
+                ax.set_xlabel(x_col)
+                ax.set_ylabel(y_col)
+
+            # Turn off extra axes
+            for ax in axes[len(pairs):]:
+                ax.axis('off')
+
+            plt.tight_layout()
+        if mb.savefig:
+            plt.savefig(f"plots/{mb.data_folder}/inference_K_{mb.K}_seed_{mb.seed}.png")
+
+        plt.show()
+        plt.close()

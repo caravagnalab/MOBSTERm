@@ -5,12 +5,17 @@ import pyro.poutine as poutine
 import copy
 import json
 import time
+import matplotlib
+
+matplotlib.rcParams['font.family'] = 'Arial' # Set Arial as the font
 
 import torch
 from torch.distributions import constraints
 from pyro.infer.autoguide import AutoDelta
 from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.mixture import GaussianMixture
+import pandas as pd
+from itertools import combinations
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -68,6 +73,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
+                plot_scatter_inference(curr_mb[j])
                 end_time = time.time()
                 elapsed_time = end_time - start_time
                 print(f"Time taken for K = {curr_k} and seed = {curr_seed}: {elapsed_time:.3f} seconds")
@@ -78,6 +84,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                         dict[key] = convert_to_list(value)#.detach().cpu().numpy()  # Convert tensor to lists
                 list_to_save.append(dict)
 
+                
                 if curr_mb[j].final_dict['icl'] <= min_bic_seed:
                     min_bic_seed = curr_mb[j].final_dict['icl']
                     mb_best_seed = curr_mb[j]
@@ -182,7 +189,7 @@ class mobster_MV():
         weights_kmeans = cluster_sizes.reshape(-1)/np.sum(cluster_sizes.reshape(-1))
         self.init_weights = torch.tensor(weights_kmeans)
         """
-        for seed in range(1, 10):
+        for seed in range(1, 15):
             gmm = GaussianMixture(n_components=self.K, covariance_type='full', random_state=seed).fit((self.NV/self.DP).numpy())
             bic = gmm.bic((self.NV/self.DP).numpy())
             # Update best results if current bic is lower
@@ -331,7 +338,7 @@ class mobster_MV():
 
         plt.scatter(self.kmeans_centers_no_noise[:, 0], 
                     self.kmeans_centers_no_noise[:, 1], color='red', marker='x', s=25)
-        plt.title(f"Kmeans init (K = {self.K}, seed = {self.seed})")
+        plt.title(f"GMM init (K = {self.K}, seed = {self.seed})")
         plt.xlim([0,1])
         plt.ylim([0,1])
         if self.savefig:
@@ -346,7 +353,7 @@ class mobster_MV():
             fig, axes = plt.subplots(self.K, self.NV.shape[1], figsize=(16, self.K*3))
         if self.K == 1:
             axes = ax = np.array([axes])  # add an extra dimension to make it 2D
-        plt.suptitle(f"Starting kmeans marginals with K={self.K}, seed={self.seed}",fontsize=14)
+        plt.suptitle(f"GMM marginals with K={self.K}, seed={self.seed}",fontsize=14)
         x = np.linspace(0.001, 1, 1000)
 
         cmap = cm.get_cmap('tab20')
@@ -587,8 +594,8 @@ class mobster_MV():
         # k_beta
         self.k_beta_L = torch.tensor(90.)
         # self.k_beta_L = torch.tensor(0.)
-        self.k_beta_init = torch.tensor(200.) # which will be 90+200
-        self.k_beta_mean = torch.tensor(200.)
+        self.k_beta_init = torch.tensor(100.) # which will be 90+200
+        self.k_beta_mean = torch.tensor(100.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
@@ -612,7 +619,7 @@ class mobster_MV():
         self.a_beta_zeros = torch.tensor(1e-4)
         self.b_beta_zeros = torch.tensor(1e4)
 
-        self.temperature = 0.2
+        self.temperature = 0.1
 
     def model(self):
         """
@@ -771,7 +778,7 @@ class mobster_MV():
 
     def get_parameters_stopping(self, params):
         par = {'phi_beta_param': params["phi_beta_param"],
-            #    'k_beta_param': params["k_beta_param"],
+               'k_beta_param': params["k_beta_param"],
                 'alpha_pareto_param': params['alpha_pareto_param'],
                 'delta_param': params['delta_param']} 
         return par
@@ -843,11 +850,6 @@ class mobster_MV():
         pyro.clear_param_store()
         self.gaussian_noise = best_noise
         self.cluster_initialization(compute_kmeans = False, final = True)
-        # print("Noise", self.kmeans_centers)
-        # print("No noise", self.kmeans_centers_no_noise)
-
-
-        # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
         svi.step()
         gradient_norms = defaultdict(list)
         for name, value in pyro.get_param_store().named_parameters():
@@ -924,7 +926,7 @@ class mobster_MV():
         print(f"bic: {bic} \n")
         icl = self.compute_ICL(self.params, bic)
 
-        self.plot()
+        # self.plot()
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         
         self.final_dict = {
@@ -1105,8 +1107,7 @@ class mobster_MV():
         plt.show()
         plt.close()
 
-
-    def plot(self):
+    def plot_old(self):
         """
         Plot the results.
         """
