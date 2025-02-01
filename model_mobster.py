@@ -7,7 +7,7 @@ import json
 import time
 import matplotlib
 
-matplotlib.rcParams['font.family'] = 'Arial' # Set Arial as the font
+
 
 import torch
 from torch.distributions import constraints
@@ -18,6 +18,7 @@ import pandas as pd
 from itertools import combinations
 
 import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'Arial' # Set Arial as the font
 import matplotlib.cm as cm
 from sklearn.cluster import KMeans
 from utils.BoundedPareto import BoundedPareto
@@ -149,8 +150,8 @@ class mobster_MV():
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
         self.K = K
         if  NV is not None and purity is not None:
-            self.purity = purity
-        else:
+            self.purity = torch.tensor(purity)
+        elif NV is not None:
             self.purity = torch.ones(NV.shape[1])
         self.seed = seed
         self.par_threshold = par_threshold
@@ -226,22 +227,7 @@ class mobster_MV():
     def noise_kmeans(self):
         # Add gaussian noise to found centers
         self.best_centers = self.best_centers + self.gaussian_noise  
-        # self.best_centers = torch.tensor([[0.02, 0.5], # tail asse x, clonal assse y (hitchhiker)
-        #         [1.0e-10, 0.02], # tail asse y
-        #         [0.02, 1.0e-10], # tail asse x
-        #         [1.0000e-10, 2.0172e-01], # subclonal asse y
-        #         [0.5, 1.0000e-10], # clonal asse x private
-        #         [0.5, 0.5], # clonal, clonal
-        #         [1.0000e-10, 0.5]]) # clonal asse y private
-        # -----------------Gaussian noise------------------#
-        
-        # Clip probabilities in [min_vaf, 0.999]
-        # self.best_centers[self.best_centers <= self.phi_beta_L] = self.phi_beta_L + 1e-5 # used as initial value of phi_beta
-        # print(self.best_centers)
         self.best_centers = torch.maximum(self.best_centers, self.phi_beta_L.unsqueeze(0) + 1e-5)
-        # print(self.best_centers)
-        # best_centers[best_centers <= 0] = 1 - 0.999
-        # self.best_centers[self.best_centers >= self.max_vaf] = self.max_vaf - 1e-5
         self.best_centers = torch.minimum(self.best_centers, self.max_vaf.unsqueeze(0) - 1e-5)
         self.kmeans_centers = self.best_centers
         """
@@ -433,7 +419,7 @@ class mobster_MV():
         return dir # simply does log(weights) + log(density)
 
     def pareto_binomial_pmf(self, NV, DP, alpha, H):
-        integration_points=5000
+        integration_points=500
         # Generate integration points across all rows at once
         t = torch.linspace(self.pareto_L, H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
         NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], 1)
@@ -588,7 +574,7 @@ class mobster_MV():
         return min_vaf
 
     def set_prior_parameters(self):
-        self.max_vaf = torch.tensor(self.purity)/2 # for a 1:1 karyotype, tensor D x 1
+        self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
@@ -968,7 +954,7 @@ class mobster_MV():
         return lks
 
     def compute_posteriors(self, which = 'posteriors'):
-        # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
+        
         lks = self.compute_final_lk(which = which) # K x N
         res = torch.zeros(self.K, len(self.NV)) # K x N
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
@@ -977,34 +963,33 @@ class mobster_MV():
             res[k] = torch.exp(lks_k - norm_fact)
         self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
-        # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
+        """"""
+        # Find empty components and remove them
+        counts = torch.bincount(self.params["cluster_assignments"], minlength=self.K)  # Shape: (K,)
+        empty_components = torch.where(counts == 0)[0]  # Indices of empty components
+        
+
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", 
+                "delta_param", "weights_param", "probs_pareto_param", "w_param"]
+        
+        if len(empty_components) > 0:
+            # Remove empty components from responsibilities
+            mask = torch.ones(self.K, dtype=torch.bool)
+            mask[empty_components] = False
+            self.params["responsib"] = self.params["responsib"][mask]
+            
+            # Recompute cluster assignments with updated responsibilities
+            self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim=0)
+            for key, _ in self.params.items():
+                if key in keys and isinstance(self.params[key], torch.Tensor) and self.params[key].shape[0] == self.K:
+                    self.params[key] = self.params[key][mask]  # Keep only non-empty rows
+
+            # Update the number of components
+            self.final_K = self.params["responsib"].shape[0]
+        else:
+            self.final_K = self.K
         
         return lks
-    
-    # def compute_euclidean_distance(self, t1, t2):
-    #     # Flatten tensors to vectors
-    #     t1_flat = t1.flatten()
-    #     t2_flat = t2.flatten()
-    #     return torch.norm(t1_flat - t2_flat).item()
-
-    # def compute_max_relative_distance(self, old, new):
-    #     old_flat = old.flatten()
-    #     new_flat = new.flatten()
-    #     # Compute relative distances element-wise
-    #     diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
-    #     # Return the maximum relative distance
-    #     return torch.max(diff_mix).item()
-
-    # def compute_mixing_distances(self, vector):
-    #     distances = []
-    #     distances_euc = []
-    #     for i in range(1, len(vector)):
-    #         # Compute the maximum relative distance for consecutive parameter vectors
-    #         dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
-    #         distances.append(dist)
-    #         dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
-    #         distances_euc.append(dist_euc)
-    #     return distances, distances_euc
 
     def compute_euclidean_distance(self, t1, t2):
         # Flatten tensors to vectors
