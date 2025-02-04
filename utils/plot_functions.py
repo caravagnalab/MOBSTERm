@@ -18,31 +18,51 @@ from itertools import combinations
 
 def plot_deltas(mb, savefig = False, data_folder = None):
     deltas = mb.params["delta_param"].detach().numpy()
+
     if deltas.shape[0] == 1:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, 1.5))  # Custom size for 1 plot
-        ax = [ax]  # add an extra dimension to make it 2D
+        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(5, 1.5))
+        ax = [ax]  # Ensure ax is always a list for consistency
     else:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, mb.final_K*1))
-    
-    plt.suptitle(f"Delta with K={mb.K}, seed={mb.seed}", fontsize=14)
-    fig.tight_layout() 
+        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(5, mb.K * 0.8))
+
+    plt.suptitle(f"Delta with K={mb.K}, seed={mb.seed}", fontsize=12, y=0.98)
+
+    fig.subplots_adjust(top=0.93, hspace=0.2, right=0.8)  # Increase right space for "Cn" labels & colorbar
+
+    # Define a shared color scale
+    norm = plt.Normalize(vmin=0, vmax=1)
+    cmap = sns.color_palette("crest", as_cmap=True)
+
     for k in range(deltas.shape[0]):
-        sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap="crest")
-        # ax[k].set(xlabel="Distributions (0=Pareto, 1=Beta)", ylabel="Sample")
-        # ax[k].set(xlabel="Distributions", ylabel="Sample")
-        # ax[k].set_yticklabels([1, 2])
+        sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap=cmap, cbar=False)  # Disable individual colorbars
+
         num_rows = deltas[k].shape[0]
-        ax[k].set_yticks([i + 0.5 for i in range(num_rows)])  # Center ticks in the middle of each row
-        ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)  # Explicitly set rotation to 0
+        ax[k].set_yticks([i + 0.5 for i in range(num_rows)])
+        ax[k].set_yticklabels([str(i + 1) for i in range(num_rows)], rotation=0)
 
-        # Set x-tick labels
-        ax[k].set_xticklabels(["Pareto", "Beta", "Dirac"], rotation=0)
-
-        # Setting x and y labels for the subplot
         ax[k].set(xlabel="", ylabel="Sample")
+
         if k == (deltas.shape[0] - 1):
+            ax[k].set_xticklabels(["Pareto", "Beta", "Dirac"], rotation=0)
             ax[k].set(xlabel="Distributions")
-        ax[k].set_title(f"Cluster {k}", fontsize=14)
+        else:
+            ax[k].set_xticklabels([])
+            ax[k].tick_params(axis='x', which='both', bottom=False, top=False)
+
+        # Add cluster label on the right side, slightly to the left to make space for colorbar
+        ax[k].text(
+            ax[k].get_xlim()[0] - 0.6,  # Position slightly outside the heatmap
+            num_rows / 2,  # Center vertically
+            f"C{k}",
+            fontsize=12,
+            va="center",
+            ha="left"
+        )
+
+    # Add a single colorbar to the right of "Cn" labels
+    cbar_ax = fig.add_axes([0.85, 0.2, 0.02, 0.6])  # [left, bottom, width, height]
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, cax=cbar_ax)
     seed = mb.seed
     if savefig:
         plt.savefig(f"plots/{data_folder}/deltas_K_{mb.K}_seed_{seed}.png")
