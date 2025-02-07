@@ -601,14 +601,14 @@ class mobster_MV():
         # k_beta
         self.k_beta_L = torch.tensor(90.)
         # self.k_beta_L = torch.tensor(0.)
-        self.k_beta_init = torch.tensor(200.) # which will be 90+200
-        self.k_beta_mean = torch.tensor(200.)
+        self.k_beta_init = torch.tensor(100.) # which will be 90+200
+        self.k_beta_mean = torch.tensor(100.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
         # self.alpha_pareto_mean = torch.tensor(1.)
         # self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_pareto_mean = torch.tensor(1.2)
+        self.alpha_pareto_mean = torch.tensor(1.5)
         self.alpha_pareto_std = torch.tensor(0.5)
         # self.alpha_pareto_mean = torch.tensor(2.7)
         # self.alpha_pareto_std = torch.tensor(1.)
@@ -985,7 +985,7 @@ class mobster_MV():
         self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
         # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
-        
+        self.final_K = self.K
         return lks
     
     # def compute_euclidean_distance(self, t1, t2):

@@ -4,6 +4,7 @@ import pyro.distributions as dist
 from scipy import stats
 import torch
 import seaborn as sns
+import pyro
 
 import matplotlib.pyplot as plt
 from sklearn.metrics import normalized_mutual_info_score
@@ -39,7 +40,7 @@ if __name__ == "__main__":
     parser.add_argument("--cov", type=int, default=100) # coverage
 
     num_iter = 2000
-    num_dataset = 20
+    num_dataset = 15
 
     args = parser.parse_args()
     N = args.N  # number of mutations
@@ -58,6 +59,7 @@ if __name__ == "__main__":
     conf_matrix_list = []
     seed = 0
     for idx in range(num_dataset):
+        
         seed1 = seed+idx+K+N
         pyro.set_rng_seed(seed1)
         torch.manual_seed(seed1)
@@ -65,25 +67,25 @@ if __name__ == "__main__":
         
         # Sample mixing proportions for clusters and multiply by N to obtain the number of data in each cluster
         pi = sample_mixing_prop(K, min_value=0.05) * N
-        print(pi/N)
-        print(pi)
+        # print(pi/N)
+        # print(pi)
         # pi = dist.Dirichlet(torch.ones(K)).sample() * N  # Number of data in each cluster
         pi = np.round(pi.numpy()).astype('int')
 
         # Adjust proportions to ensure they sum to N
-        print("np.sum(pi)", np.sum(pi))
+        # print("np.sum(pi)", np.sum(pi))
         if np.sum(pi) < N:
             diff = N - np.sum(pi)
             pi[-1] += diff
         elif np.sum(pi) > N:
             diff = np.sum(pi) - N
             pi[-1] -= diff
+        # print("np.sum(pi)", np.sum(pi))
+        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, purity, coverage)
 
-        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model(N, K, pi, D, purity, coverage)
-  
         plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity, coverage)  
         plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity, coverage)
-
+        
         # Run the model
         if K != 3:
             K_list = [K - 2, K - 1, K, K + 1, K + 2, K + 3]

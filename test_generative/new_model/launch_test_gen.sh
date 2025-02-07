@@ -7,7 +7,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --mem=50gb
 #SBATCH --output=./out_files/test_%a.out
-#SBATCH --array=23
+#SBATCH --array=1-83
 
 
 echo $SLURM_ARRAY_TASK_ID
