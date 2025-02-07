@@ -532,8 +532,8 @@ def plot_marginals_inference(mb):
         ax.set_ylabel("Count")
         # ax.set_xlim([0,1])
         ax.grid(True, alpha=0.3)
-    handles, labels = ax.get_legend_handles_labels()  # Get the handles and labels from the last plot
-    fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.05), ncol=3)  # Place legend below the plots
+    # handles, labels = ax.get_legend_handles_labels()  # Get the handles and labels from the last plot
+    # fig.legend(handles, labels, loc='center', bbox_to_anchor=(0.5, -0.05), ncol=3)  # Place legend below the plots
     plt.subplots_adjust(wspace=0.3, hspace=0.3)  # Adjust the space between subplots
     # Adjust layout and show the plot
     plt.tight_layout()
@@ -560,6 +560,9 @@ def plot_scatter_inference(mb):
     # print(df)
     unique_labels = df['Cluster'].unique()  # Ensures fixed order
     
+    # label_mapping = {label: f"C{label}" for label in unique_labels}
+    # df['Cluster'] = df['Cluster'].map(label_mapping)  # Rename labels 
+
     pairs = list(combinations(columns, 2))  # Unique pairs of samples
     colors = [
     "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33",  
@@ -579,6 +582,7 @@ def plot_scatter_inference(mb):
         ax = sns.scatterplot(data=df, x=x_col, y=y_col, hue='Cluster', palette=palette, s=20, alpha = 0.7, edgecolor='none') # 'tab20'
         ax.grid(True,linewidth=0.4, color='grey', alpha=0.7)
         plt.title(f'{x_col} vs {y_col}')
+        ax.legend(title=None)
         plt.xlabel(x_col)
         plt.ylabel(y_col)
         # ax.set_xlim([0,1])
@@ -600,6 +604,7 @@ def plot_scatter_inference(mb):
             ax.set_ylabel(y_col)
             ax.set_xlim([0,1])
             ax.set_ylim([0,1])
+            ax.legend(title=None)  
 
         # Turn off extra axes
         for ax in axes[len(pairs):]:
