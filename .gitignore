@@ -30,7 +30,9 @@ test_generative/final_our_model/results/
 saved_objects/
 GBM_data/
 out_files/
-data/
+data/GBM_data/
+data/multiple_hitchhikers_mirage/
+data/admixing/
 
 *.out
 ._*
