@@ -17,8 +17,8 @@ from sklearn.mixture import GaussianMixture
 import pandas as pd
 from itertools import combinations
 
-import matplotlib.pyplot as plt
-plt.rcParams['font.family'] = 'Arial' # Set Arial as the font
+# import matplotlib.pyplot as plt
+# plt.rcParams['font.family'] = 'Arial' # Set Arial as the font
 import matplotlib.cm as cm
 from sklearn.cluster import KMeans
 from utils.BoundedPareto import BoundedPareto
@@ -140,14 +140,17 @@ class mobster_MV():
                 Previously estimated purity of the tumor
         """   
 
-        if NV is not None:
+        if NV is not None and DP is not None:
+            if NV.ndim == 1:
+                NV = NV.unsqueeze(-1)
+                DP = DP.unsqueeze(-1)
             vaf = NV.numpy()/DP.numpy()
             cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
             NV = NV[cond,:]
             self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
-        if DP is not None:
             DP = DP[cond,:]
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
+            
         self.K = K
         if  NV is not None and purity is not None:
             self.purity = torch.tensor(purity)
@@ -176,6 +179,7 @@ class mobster_MV():
         self.best_centers = None
         best_labels = None
         best_weights = None
+        best_cov = None
         
         """
         # Loop to choose the seed which produces a result with the lowest inertia
@@ -201,6 +205,7 @@ class mobster_MV():
             if bic < best_bic:
                 best_bic = bic
                 best_labels = gmm.predict((self.NV/self.DP).numpy())
+                best_cov = gmm.covariances_
                 best_weights = gmm.weights_
                 self.best_centers = torch.tensor(gmm.means_)
         
@@ -210,19 +215,18 @@ class mobster_MV():
         
         self.kmeans_labels = torch.tensor(best_labels).clone()
         self.kmeans_centers_no_noise = self.best_centers.clone()
-        # self.kmeans_centers_no_noise = torch.tensor([[0.02, 0.5], # tail asse x, clonal assse y (hitchhiker)
-        #         [1.0e-10, 0.02], # tail asse y
-        #         [0.02, 1.0e-10], # tail asse x
-        #         [1.0000e-10, 2.0172e-01], # subclonal asse y
-        #         [0.5, 1.0000e-10], # clonal asse x private
-        #         [0.5, 0.5], # clonal, clonal
-        #         [1.0000e-10, 0.5]]) # clonal asse y private
-        # print("Kmeans centers:", self.kmeans_centers_no_noise)
+        # cov = torch.tensor(np.abs(np.array([np.diagonal(cov) for cov in gmm.covariances_])))
+        # # print(torch.tensor(best_cov).shape)
+        # print(cov)
+        # self.init_kappas = ((self.kmeans_centers_no_noise*(1-self.kmeans_centers_no_noise)/cov) -1)-self.k_beta_L
+        # print(self.init_kappas)
+
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        
         self.kmeans_centers_no_noise = torch.minimum(self.kmeans_centers_no_noise, self.max_vaf.unsqueeze(0) - 1e-5)
-
+        
 
     def noise_kmeans(self):
         # Add gaussian noise to found centers
@@ -288,10 +292,15 @@ class mobster_MV():
                 # print(values)
                 sorted_indices = torch.argsort(values, descending=True) # list of indices ex. 0,2,1
                 # print(sorted_indices)
+                
                 init_delta[i,j,sorted_indices[0]] = 0.5 # this can be either pareto, beta or private
                 init_delta[i,j,sorted_indices[1]] = 0.3
                 init_delta[i,j,sorted_indices[2]] = 0.2
-                
+                """
+                init_delta[i,j,sorted_indices[0]] = 0.7 # this can be either pareto, beta or private
+                init_delta[i,j,sorted_indices[1]] = 0.2
+                init_delta[i,j,sorted_indices[2]] = 0.1
+                """
                 self.dirichlet_conc[i,j,sorted_indices[0]] = 10. # this can be either pareto, beta or private
                 self.dirichlet_conc[i,j,sorted_indices[1]] = 1.
                 self.dirichlet_conc[i,j,sorted_indices[2]] = 1.
@@ -583,21 +592,22 @@ class mobster_MV():
         self.phi_beta_H = self.max_vaf
 
         # k_beta
-        self.k_beta_L = torch.tensor(90.)
+        self.k_beta_L = torch.tensor(50.)
         # self.k_beta_L = torch.tensor(0.)
-        self.k_beta_init = torch.tensor(100.) # which will be 90+200
-        self.k_beta_mean = torch.tensor(100.)
+        self.k_beta_init = torch.tensor(150.) # which will be 90+200
+        self.k_beta_mean = torch.tensor(150.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
         # self.alpha_pareto_mean = torch.tensor(1.)
         # self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_pareto_mean = torch.tensor(1.2)
+        self.alpha_pareto_mean = torch.tensor(1.8)
         self.alpha_pareto_std = torch.tensor(0.5)
         # self.alpha_pareto_mean = torch.tensor(2.7)
         # self.alpha_pareto_std = torch.tensor(1.)
         
         self.alpha_pareto_init = torch.tensor(1.5)
+        # self.alpha_pareto_init = torch.tensor(2.5)
         self.min_alpha = torch.tensor(0.5)
         self.max_alpha = torch.tensor(4.)
 
@@ -703,6 +713,7 @@ class mobster_MV():
         phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
         # phi_beta_param = pyro.param("phi_beta_param", lambda: torch.ones((K,D))*0.2, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
         k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
+        # k_beta_param = pyro.param("k_beta_param", lambda:self.init_kappas, constraint=constraints.positive)
 
         probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*self.probs_pareto_init, constraint=constraints.interval(self.pareto_L, self.pareto_H))
         
@@ -834,6 +845,7 @@ class mobster_MV():
             # self.gaussian_noise = torch.zeros([self.K, D])
             # print("Noise: ", self.gaussian_noise)
             self.cluster_initialization(compute_kmeans = False)
+            # print(self.kmeans_centers)
             loss = svi.step()
             if loss < min_loss:
                 best_noise = self.gaussian_noise.clone()
@@ -973,6 +985,7 @@ class mobster_MV():
                 "delta_param", "weights_param", "probs_pareto_param", "w_param"]
         
         if len(empty_components) > 0:
+            
             # Remove empty components from responsibilities
             mask = torch.ones(self.K, dtype=torch.bool)
             mask[empty_components] = False
@@ -986,6 +999,9 @@ class mobster_MV():
 
             # Update the number of components
             self.final_K = self.params["responsib"].shape[0]
+            """
+            self.final_K = self.K
+            """
         else:
             self.final_K = self.K
         

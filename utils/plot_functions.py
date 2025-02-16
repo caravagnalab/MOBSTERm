@@ -362,7 +362,11 @@ def plot_marginals(mb, savefig = False, data_folder = None):
     "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1",  
     "#000075", "#808080", "#d3a6f3", "#ff9cdd", "#73d7b0"  
     ]
-    color_mapping = colors[:len(unique_labels)]
+    # color_mapping = colors[:len(unique_labels)]
+    if mb.final_K == mb.K:
+        color_mapping = colors
+    else:
+        color_mapping = colors[:len(unique_labels)]
     # cmap = cm.get_cmap('tab20')
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     for k in range(mb.final_K):
@@ -431,13 +435,17 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     # cmap = cm.get_cmap('tab20')
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     colors = [
-    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33",  
+    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#cccc33",  
     "#a65628", "#f781bf", "#999999", "#000000",  # First 10 colors (Set1)  
     "#46f0f0", "#f032e6", "#bcf60c", "#fabed4", "#008080", "#e6beff",  
     "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1",  
     "#000075", "#808080", "#d3a6f3", "#ff9cdd", "#73d7b0"  
     ]
     color_mapping = colors[:len(unique_labels)]
+    if mb.final_K == mb.K:
+        color_mapping = colors
+    else:
+        color_mapping = colors[:len(unique_labels)]
 
     # Plot 1: Mixing Proportions
     plt.figure(figsize=(10, 5))
@@ -490,7 +498,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
 def plot_marginals_inference(mb):
     D = mb.NV.shape[1]
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
-    vaf = mb.NV / mb.DP
+    vaf = (mb.NV / mb.DP)#/purity
     
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
@@ -507,14 +515,17 @@ def plot_marginals_inference(mb):
 
     # Create a consistent color mapping
     colors = [
-    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33",  
+    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#cccc33",  
     "#a65628", "#f781bf", "#999999", "#000000",  # First 10 colors (Set1)  
     "#46f0f0", "#f032e6", "#bcf60c", "#fabed4", "#008080", "#e6beff",  
     "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1",  
     "#000075", "#808080", "#d3a6f3", "#ff9cdd", "#73d7b0"  
     ]
     palette = colors[:len(unique_labels)]
-
+    if mb.final_K == mb.K:
+        palette = colors
+    else:
+        palette = colors[:len(unique_labels)]
     # palette = sns.color_palette('tab20', n_colors=len(unique_labels))
     # palette = sns.color_palette('Set1', n_colors=len(unique_labels))
     color_dict = dict(zip(unique_labels, palette))
@@ -549,7 +560,7 @@ def plot_scatter_inference(mb):
     """
     D = mb.NV.shape[1]
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
-    vaf = mb.NV / mb.DP
+    vaf = (mb.NV / mb.DP)#/purity
     
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
@@ -565,14 +576,17 @@ def plot_scatter_inference(mb):
 
     pairs = list(combinations(columns, 2))  # Unique pairs of samples
     colors = [
-    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#ffff33",  
+    "#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#cccc33",  
     "#a65628", "#f781bf", "#999999", "#000000",  # First 10 colors (Set1)  
     "#46f0f0", "#f032e6", "#bcf60c", "#fabed4", "#008080", "#e6beff",  
     "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1",  
     "#000075", "#808080", "#d3a6f3", "#ff9cdd", "#73d7b0"  
     ]
     palette = colors[:len(unique_labels)]
-
+    if mb.final_K == mb.K:
+        palette = colors
+    else:
+        palette = colors[:len(unique_labels)]
     # palette = sns.color_palette('tab20', n_colors=len(unique_labels))
     # palette = sns.color_palette('Set1', n_colors=len(unique_labels))
     if len(pairs) == 1:
@@ -597,7 +611,7 @@ def plot_scatter_inference(mb):
         axes = axes.flatten()
 
         for ax, (x_col, y_col) in zip(axes, pairs):
-            sns.scatterplot(data=df, x=x_col, y=y_col, hue='Cluster', palette=palette, ax=ax, s=20) # 'tab20'
+            sns.scatterplot(data=df, x=x_col, y=y_col, hue='Cluster', palette=palette, ax=ax, alpha = 0.7, s=20, edgecolor='none') # 'tab20'
             ax.grid(True, linewidth=0.4, color='grey', alpha=0.7)
             ax.set_title(f'{x_col} vs {y_col}')
             ax.set_xlabel(x_col)

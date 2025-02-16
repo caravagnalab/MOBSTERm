@@ -227,7 +227,7 @@ def generate_data_new_model(N, K, pi, D, purity, coverage):
 
 def generate_data_new_model_final(N, K, pi, D, purity, coverage):
     NV = torch.zeros((N, D))
-    threshold=0.11
+    threshold=0.12
     cluster_labels = torch.zeros(N)  # one-dimensional labels, one per data
     type_labels_data = torch.zeros((N, D))  # D-dimensional labels, one per data
     type_labels_cluster = torch.zeros((K, D))  # D-dimensional label, one per cluster
@@ -237,9 +237,9 @@ def generate_data_new_model_final(N, K, pi, D, purity, coverage):
     phi_param_cluster = torch.zeros((K, D))
     kappa_param_cluster = torch.zeros((K, D))
     alpha_param_cluster = torch.zeros((K, D))
-    max_vaf = purity/2
+    max_vaf = purity[0]/2
     min_phi = 0.1
-    probs_pareto = 0.08
+    probs_pareto = 0.04
     pareto_L = torch.tensor(0.03)  # Scale Pareto
     pareto_H = torch.tensor(max_vaf)  # Upper bound Pareto
     depth = dist.Poisson(coverage).sample([N,D])
