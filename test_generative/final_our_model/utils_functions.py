@@ -81,6 +81,10 @@ def create_folder(N,K,D,purity,coverage):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
+    folder_path = f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals_all'
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
     folder_path = f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/inference_marginals'
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -124,7 +128,7 @@ def plot_final(mb, N, K, idx_real, purity, coverage):
 
     delta = mb.params["delta_param"]
     pred_dist = []
-    for k in range(mb.K):
+    for k in range(mb.final_K):
         dist_d = []
         for d in range(mb.NV.shape[1]):
             delta_kd = delta[k, d]
@@ -209,11 +213,11 @@ def plot_initialization(mb, N, K, idx_real, purity, coverage):
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/initialization/N_{N}_K_{K}_D_{mb.NV.shape[1]}_scatter_{idx_real}.png')
     plt.close()
 
-    if mb.K == 1:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, 4))
+    if mb.final_K == 1:
+        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(16, 4))
     else:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, K*3))
-    if mb.K == 1:
+        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(16, K*3))
+    if mb.final_K == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
     plt.suptitle(f"Starting kmeans marginals with K={K}, seed={mb.seed}",fontsize=14)
     x = np.linspace(0.001, 1, 1000)
@@ -221,7 +225,7 @@ def plot_initialization(mb, N, K, idx_real, purity, coverage):
     cmap = cm.get_cmap('tab20')
     color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     phi = mb.kmeans_centers
-    for k in range(mb.K):
+    for k in range(mb.final_K):
         for d in range(mb.NV.shape[1]):
             delta_kd = mb.init_delta[k, d]
             maxx = torch.argmax(delta_kd)
@@ -295,19 +299,19 @@ def plot_final_marginals(mb, N, K, D, idx_real, purity, coverage):
         labels = labels.detach().numpy()
     else:
         labels = np.array(labels)
-    if mb.K == 1:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, 4))
+    if mb.final_K == 1:
+        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(16, 4))
     else:
-        fig, axes = plt.subplots(mb.K, mb.NV.shape[1], figsize=(16, mb.K*3))
-    if mb.K == 1:
+        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(16, mb.final_K*3))
+    if mb.final_K == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
-    plt.suptitle(f'Marginals with K={mb.K}, seed={mb.seed}',fontsize=14)
+    plt.suptitle(f'Marginals with K={mb.final_K}, seed={mb.seed}',fontsize=14)
     x = np.linspace(0.001, 1, 1000)
 
     unique_labels = np.unique(labels)
     cmap = cm.get_cmap('tab20')
     color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
-    for k in range(mb.K):
+    for k in range(mb.final_K):
         for d in range(mb.NV.shape[1]):
             delta_kd = delta[k, d]
             maxx = torch.argmax(delta_kd)
@@ -386,6 +390,24 @@ def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_
     plt.suptitle(f'Orignal data with N = {N} and {K} clusters (i = {idx_real})')
     plt.show()
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real/N_{N}_K_{K}_D_{D}_real_{idx_real}.png')
+    plt.close()
+
+
+def plot_marginals_all_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage):
+    fig, axes = plt.subplots(1, D, figsize=(5*D, 4))
+    vaf = NV/DP
+    plt.suptitle("Marginals")
+    n_bins = int(np.ceil(np.sqrt(len(vaf))))
+    for i in range(D):
+        x = vaf[:, i].numpy()
+        x = x[x > 0]
+        axes[i].hist(x, bins = n_bins)    
+        
+        axes[i].set_xlabel(f"Sample {i+1}")
+        axes[i].set_xlim([0,1])
+
+    plt.show()
+    plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals_all/N_{N}_K_{K}_D_{D}_real_{idx}.png')
     plt.close()
 
 def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage):
@@ -523,9 +545,9 @@ def plot_deltas_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, 1.5))  # Custom size for 1 plot
         ax = [ax]  # add an extra dimension to make it 2D
     else:
-        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, mb.K*1))
+        fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(6, mb.final_K*1))
     
-    plt.suptitle(f'Delta with K={mb.K}, seed={mb.seed} (idx = {idx})', fontsize=14)
+    plt.suptitle(f'Delta with K={mb.final_K}, seed={mb.seed} (idx = {idx})', fontsize=14)
     fig.tight_layout() 
     for k in range(deltas.shape[0]):
         sns.heatmap(deltas[k], ax=ax[k], vmin=0, vmax=1, cmap="crest")
@@ -559,7 +581,7 @@ def plot_responsib_gen(mb,  N, K, D, idx, savefig = False, data_folder = None):
         resp = np.array(mb.params['responsib'])
     
     fig, ax = plt.subplots(nrows=1, ncols=1)
-    plt.suptitle(f'Responsibilities with K={mb.K}, seed={mb.seed} (idx = {idx})', fontsize = 14)
+    plt.suptitle(f'Responsibilities with K={mb.final_K}, seed={mb.seed} (idx = {idx})', fontsize = 14)
     fig.tight_layout()
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
     seed = mb.seed
@@ -584,8 +606,8 @@ def plot_paretos_gen(mb, N, K, D, idx, savefig = False, data_folder = None):
         fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (18,mb.K*1))      
-    plt.suptitle(f'Pareto with K={mb.K}, seed={mb.seed} (idx = {idx})', fontsize=14)
+        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (18,mb.final_K*1))      
+    plt.suptitle(f'Pareto with K={mb.final_K}, seed={mb.seed} (idx = {idx})', fontsize=14)
     fig.tight_layout()
     x = np.arange(0,0.5,0.001)
     for k in range(alpha_pareto.shape[0]):
@@ -611,8 +633,8 @@ def plot_betas_gen(mb, N, K, D, idx,savefig = False, data_folder = None):
         fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (18,mb.K*1))   
-    plt.suptitle(f'Beta with K={mb.K}, seed={mb.seed} (idx = {idx})', fontsize=14)
+        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (18,mb.final_K*1))   
+    plt.suptitle(f'Beta with K={mb.final_K}, seed={mb.seed} (idx = {idx})', fontsize=14)
     fig.tight_layout()
     x = np.arange(0,1,0.001)
     for k in range(phi_beta.shape[0]):
@@ -640,11 +662,11 @@ def plot_loss_lks_gen(mb, N, K, D, idx, savefig = True, data_folder = None):
 
     _, ax = plt.subplots(2, 2, figsize=(15, 15))
     ax[0,0].plot(mb.losses)
-    ax[0,0].set_title(f'Loss (K = {mb.K}, seed = {mb.seed})')
+    ax[0,0].set_title(f'Loss (K = {mb.final_K}, seed = {mb.seed})')
     ax[0,0].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
     ax[0,1].plot(mb.lks)
-    ax[0,1].set_title(f'Likelihood (K = {mb.K}, seed = {mb.seed})')
+    ax[0,1].set_title(f'Likelihood (K = {mb.final_K}, seed = {mb.seed})')
     ax[0,1].grid(True, color='gray', linestyle='-', linewidth=0.2)
 
     keys = list(mb.params_stop_list.keys())

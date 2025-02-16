@@ -78,7 +78,7 @@ if __name__ == "__main__":
             diff = np.sum(pi) - N
             pi[-1] -= diff
 
-        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, purity, coverage)
+        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, [purity,purity], coverage)
   
         plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity, coverage)  
         plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity, coverage)
@@ -107,8 +107,10 @@ if __name__ == "__main__":
 
         fit_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_fit_{idx}.h5'
         best_fit_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_best_fit_{idx}.h5'
-        
-        max_K = 2*K
+        if K == 4:
+            max_K = 10
+        else:
+            max_K = 2*K 
         sb.call('pyclone-vi fit -i '+data_path+' -o '+fit_path+' -c '+  str(max_K) + ' -d beta-binomial -r 10', shell = True)
         sb.call('pyclone-vi write-results-file -i '+fit_path+' -o '+best_fit_path, shell = True)
 

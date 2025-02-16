@@ -5,14 +5,20 @@ import pyro.poutine as poutine
 import copy
 import json
 import time
+import matplotlib
+
+
 
 import torch
 from torch.distributions import constraints
 from pyro.infer.autoguide import AutoDelta
 from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.mixture import GaussianMixture
+import pandas as pd
+from itertools import combinations
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
+# plt.rcParams['font.family'] = 'Arial' # Set Arial as the font
 import matplotlib.cm as cm
 from sklearn.cluster import KMeans
 from utils.BoundedPareto import BoundedPareto
@@ -39,7 +45,7 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -68,6 +74,8 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
+                # plot_scatter_inference(curr_mb[j])
+                # plot_marginals_inference(curr_mb[j])
                 end_time = time.time()
                 elapsed_time = end_time - start_time
                 print(f"Time taken for K = {curr_k} and seed = {curr_seed}: {elapsed_time:.3f} seconds")
@@ -78,6 +86,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                         dict[key] = convert_to_list(value)#.detach().cpu().numpy()  # Convert tensor to lists
                 list_to_save.append(dict)
 
+                
                 if curr_mb[j].final_dict['icl'] <= min_bic_seed:
                     min_bic_seed = curr_mb[j].final_dict['icl']
                     mb_best_seed = curr_mb[j]
@@ -92,13 +101,13 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
                         # Write the JSON representation of each dictionary to the file
                         f.write(json.dumps(dict_copy) + '\n')  # Write as a JSON string
             
-            plot_marginals(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_mixing_proportions(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_marginals(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # # plot_marginals_alltogether(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_betas(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
+            # plot_mixing_proportions(mb_best_seed, savefig = savefig, data_folder = data_folder)
             
             mb_list.append(mb_best_seed)
             if mb_best_seed.final_dict['icl'] <= min_bic:
@@ -112,7 +121,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=1, seed=[123,1234]
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, purity=1, seed=[123,1234], 
+    def __init__(self, NV = None, DP = None, K = 1, purity=None, seed=[123,1234], 
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
@@ -131,16 +140,22 @@ class mobster_MV():
                 Previously estimated purity of the tumor
         """   
 
-        if NV is not None:
+        if NV is not None and DP is not None:
+            if NV.ndim == 1:
+                NV = NV.unsqueeze(-1)
+                DP = DP.unsqueeze(-1)
             vaf = NV.numpy()/DP.numpy()
             cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
             NV = NV[cond,:]
             self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
-        if DP is not None:
             DP = DP[cond,:]
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
+            
         self.K = K
-        self.purity = purity
+        if  NV is not None and purity is not None:
+            self.purity = torch.tensor(purity)
+        elif NV is not None:
+            self.purity = torch.ones(NV.shape[1])
         self.seed = seed
         self.par_threshold = par_threshold
         self.loss_threshold = loss_threshold
@@ -154,8 +169,9 @@ class mobster_MV():
         if NV is not None:
             self.set_prior_parameters()
         
-        vaf = NV.numpy()/DP.numpy()
-        self.idx = np.where((vaf[:,0] >= 0.03) & (vaf[:,0] < 0.2) & (vaf[:,1] == 0))[0]
+        # vaf = NV.numpy()/DP.numpy()
+        # self.idx = np.where((vaf[:,0] >= 0.03) & (vaf[:,0] < 0.2) & (vaf[:,1] == 0))[0]
+    
 
     def compute_kmeans_centers(self):
         best_inertia = float('inf')
@@ -163,6 +179,7 @@ class mobster_MV():
         self.best_centers = None
         best_labels = None
         best_weights = None
+        
         """
         # Loop to choose the seed which produces a result with the lowest inertia
         for seed in range(1, 50):
@@ -180,7 +197,7 @@ class mobster_MV():
         weights_kmeans = cluster_sizes.reshape(-1)/np.sum(cluster_sizes.reshape(-1))
         self.init_weights = torch.tensor(weights_kmeans)
         """
-        for seed in range(1, 10):
+        for seed in range(1, 15):
             gmm = GaussianMixture(n_components=self.K, covariance_type='full', random_state=seed).fit((self.NV/self.DP).numpy())
             bic = gmm.bic((self.NV/self.DP).numpy())
             # Update best results if current bic is lower
@@ -191,46 +208,25 @@ class mobster_MV():
                 self.best_centers = torch.tensor(gmm.means_)
         
         self.init_weights = torch.tensor(best_weights)
-
+        
         # -----------------Gaussian noise------------------#
         
         self.kmeans_labels = torch.tensor(best_labels).clone()
         self.kmeans_centers_no_noise = self.best_centers.clone()
-        # self.kmeans_centers_no_noise = torch.tensor([[0.02, 0.5], # tail asse x, clonal assse y (hitchhiker)
-        #         [1.0e-10, 0.02], # tail asse y
-        #         [0.02, 1.0e-10], # tail asse x
-        #         [1.0000e-10, 2.0172e-01], # subclonal asse y
-        #         [0.5, 1.0000e-10], # clonal asse x private
-        #         [0.5, 0.5], # clonal, clonal
-        #         [1.0000e-10, 0.5]]) # clonal asse y private
-        # print("Kmeans centers:", self.kmeans_centers_no_noise)
+        
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
-        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        
+        self.kmeans_centers_no_noise = torch.minimum(self.kmeans_centers_no_noise, self.max_vaf.unsqueeze(0) - 1e-5)
+        
 
-        
-        
     def noise_kmeans(self):
         # Add gaussian noise to found centers
         self.best_centers = self.best_centers + self.gaussian_noise  
-        # self.best_centers = torch.tensor([[0.02, 0.5], # tail asse x, clonal assse y (hitchhiker)
-        #         [1.0e-10, 0.02], # tail asse y
-        #         [0.02, 1.0e-10], # tail asse x
-        #         [1.0000e-10, 2.0172e-01], # subclonal asse y
-        #         [0.5, 1.0000e-10], # clonal asse x private
-        #         [0.5, 0.5], # clonal, clonal
-        #         [1.0000e-10, 0.5]]) # clonal asse y private
-        # -----------------Gaussian noise------------------#
-        
-        # Clip probabilities in [min_vaf, 0.999]
-        self.best_centers[self.best_centers <= torch.min(self.phi_beta_L)] = torch.min(self.phi_beta_L) + 1e-5 # used as initial value of phi_beta
-        # best_centers[best_centers <= 0] = 1 - 0.999
-        self.best_centers[self.best_centers >= self.max_vaf] = self.max_vaf - 1e-5
+        self.best_centers = torch.maximum(self.best_centers, self.phi_beta_L.unsqueeze(0) + 1e-5)
+        self.best_centers = torch.minimum(self.best_centers, self.max_vaf.unsqueeze(0) - 1e-5)
         self.kmeans_centers = self.best_centers
-        # self.kmeans_centers = self.kmeans_centers_no_noise
-        # print(self.kmeans_centers)
-
-        
         """
         # INITIALIZE KAPPAS
         centroids = kmeans.cluster_centers_
@@ -307,8 +303,8 @@ class mobster_MV():
         else:
             self.noise_kmeans()
             self.init_delta = self.initialize_delta()
-            # if final == True:
-            #     self.plot_initial_assignments()
+            if final == True:
+                self.plot_initial_assignments()
 
     def plot_initial_assignments(self):
         # Plot kmeans result scatter
@@ -330,7 +326,7 @@ class mobster_MV():
 
         plt.scatter(self.kmeans_centers_no_noise[:, 0], 
                     self.kmeans_centers_no_noise[:, 1], color='red', marker='x', s=25)
-        plt.title(f"GMM (K = {self.K}, seed = {self.seed})")
+        plt.title(f"GMM init (K = {self.K}, seed = {self.seed})")
         plt.xlim([0,1])
         plt.ylim([0,1])
         if self.savefig:
@@ -419,14 +415,14 @@ class mobster_MV():
         dir = dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
         return dir # simply does log(weights) + log(density)
 
-    def pareto_binomial_pmf(self, NV, DP, alpha):
-        integration_points=5000
+    def pareto_binomial_pmf(self, NV, DP, alpha, H):
+        integration_points=500
         # Generate integration points across all rows at once
-        t = torch.linspace(self.pareto_L, self.pareto_H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
+        t = torch.linspace(self.pareto_L, H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
         NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], 1)
         DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], 1)
         binom_vals = dist.Binomial(total_count=DP_expanded, probs=t).log_prob(NV_expanded).exp()
-        pareto_vals = BoundedPareto(self.pareto_L, alpha, self.pareto_H).log_prob(t).exp()  # Shape (1, integration_points)
+        pareto_vals = BoundedPareto(self.pareto_L, alpha, H).log_prob(t).exp()  # Shape (1, integration_points)
         integrand = binom_vals * pareto_vals
 
         pmf_x = torch.trapz(integrand, t, dim=-1).log()  # Shape (NV.shape[0], NV.shape[1])
@@ -434,7 +430,7 @@ class mobster_MV():
         return pmf_x.tolist()  # Convert the result to a list
 
     def pareto_lk_integr(self, d, alpha):
-        paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha))
+        paretobin = torch.tensor(self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha, H = self.pareto_H[d]))
         return paretobin # tensor of len N (if D = 1, only N)
     
     def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
@@ -527,15 +523,6 @@ class mobster_MV():
         return  log # K x N x D
     
     def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
-        """
-        assert torch.isfinite(probs_pareto).all(), "probs_pareto contains invalid values"
-        assert torch.isfinite(alpha).all(), "alpha contains invalid values"
-        assert torch.isfinite(a_beta).all(), "a_beta contains invalid values"
-        assert torch.isfinite(b_beta).all(), "b_beta contains invalid values"
-        assert torch.isfinite(weights).all(), "weights contains invalid values"
-        assert torch.isfinite(delta).all(), "delta contains invalid values"
-        """
-
         lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
         
         start_time_tot = time.time()
@@ -547,7 +534,6 @@ class mobster_MV():
             # print(f"Time taken for log_beta_par_mix_inference: {elapsed_time:.2f} seconds")
             log_weights = torch.log(weights).unsqueeze(1)  # Shape: (K, 1)
             lk = log_weights + log_sum  # Broadcasting: (K, 1) + (K, N) → (K, N)
-            # print(weights)
         else:
             for k in range(self.K):
                 lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
@@ -557,11 +543,6 @@ class mobster_MV():
         # print(f"Time taken tot {elapsed_time_tot:.2f} seconds")
 
         assert lk.shape == (self.K, len(self.NV))
-
-        # if (lk < 0).any():
-        #     raise ValueError("m_total_lk contains negative values")
-        # if torch.isnan(self.log_sum_exp(lk)).any():
-        #     raise ValueError("NaN detected in m_total_lk computation")
         """
         for k in range(self.K):
             if which == 'inference':
@@ -590,25 +571,25 @@ class mobster_MV():
         return min_vaf
 
     def set_prior_parameters(self):
-        self.max_vaf = torch.tensor(self.purity/2) # for a 1:1 karyotype
+        self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
-        self.phi_beta_L = torch.tensor(0.1)
+        self.phi_beta_L = torch.ones(self.NV.shape[1])*0.1
         # self.phi_beta_L = self.min_vaf
         self.phi_beta_H = self.max_vaf
 
         # k_beta
-        self.k_beta_L = torch.tensor(90.)
+        self.k_beta_L = torch.tensor(50.)
         # self.k_beta_L = torch.tensor(0.)
-        self.k_beta_init = torch.tensor(100.) # which will be 90+200
-        self.k_beta_mean = torch.tensor(100.)
+        self.k_beta_init = torch.tensor(150.) # which will be 90+200
+        self.k_beta_mean = torch.tensor(150.)
         self.k_beta_std = torch.tensor(0.01)
 
         # alpha_pareto
         # self.alpha_pareto_mean = torch.tensor(1.)
         # self.alpha_pareto_std = torch.tensor(0.1)
-        self.alpha_pareto_mean = torch.tensor(1.5)
+        self.alpha_pareto_mean = torch.tensor(1.8)
         self.alpha_pareto_std = torch.tensor(0.5)
         # self.alpha_pareto_mean = torch.tensor(2.7)
         # self.alpha_pareto_std = torch.tensor(1.)
@@ -637,7 +618,7 @@ class mobster_MV():
         D = NV.shape[1] # number of dimensions (samples)
 
         weights = pyro.sample("weights", dist.Dirichlet(torch.ones(K)))
-        print('weights', weights)
+
         with pyro.plate("plate_dims", D):
             with pyro.plate("plate_probs", K):
                 # Prior for the Beta-Pareto weights
@@ -785,7 +766,7 @@ class mobster_MV():
 
     def get_parameters_stopping(self, params):
         par = {'phi_beta_param': params["phi_beta_param"],
-            #    'k_beta_param': params["k_beta_param"],
+               'k_beta_param': params["k_beta_param"],
                 'alpha_pareto_param': params['alpha_pareto_param'],
                 'delta_param': params['delta_param']} 
         return par
@@ -850,6 +831,7 @@ class mobster_MV():
             # self.gaussian_noise = torch.zeros([self.K, D])
             # print("Noise: ", self.gaussian_noise)
             self.cluster_initialization(compute_kmeans = False)
+            # print(self.kmeans_centers)
             loss = svi.step()
             if loss < min_loss:
                 best_noise = self.gaussian_noise.clone()
@@ -857,11 +839,6 @@ class mobster_MV():
         pyro.clear_param_store()
         self.gaussian_noise = best_noise
         self.cluster_initialization(compute_kmeans = False, final = True)
-        # print("Noise", self.kmeans_centers)
-        # print("No noise", self.kmeans_centers_no_noise)
-
-
-        # svi = pyro.infer.SVI(self.model, self.autoguide(), pyro.optim.Adam({"lr": lr}), pyro.infer.TraceGraph_ELBO())
         svi.step()
         gradient_norms = defaultdict(list)
         for name, value in pyro.get_param_store().named_parameters():
@@ -938,7 +915,7 @@ class mobster_MV():
         print(f"bic: {bic} \n")
         icl = self.compute_ICL(self.params, bic)
 
-        self.plot()
+        # self.plot()
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         
         self.final_dict = {
@@ -975,7 +952,7 @@ class mobster_MV():
         return lks
 
     def compute_posteriors(self, which = 'posteriors'):
-        # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
+        
         lks = self.compute_final_lk(which = which) # K x N
         res = torch.zeros(self.K, len(self.NV)) # K x N
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
@@ -984,34 +961,33 @@ class mobster_MV():
             res[k] = torch.exp(lks_k - norm_fact)
         self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
-        # self.NV[self.zero_NV_idx] = torch.tensor(0, dtype=self.NV.dtype)
-        self.final_K = self.K
+        """"""
+        # Find empty components and remove them
+        counts = torch.bincount(self.params["cluster_assignments"], minlength=self.K)  # Shape: (K,)
+        empty_components = torch.where(counts == 0)[0]  # Indices of empty components
+        
+
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", 
+                "delta_param", "weights_param", "probs_pareto_param", "w_param"]
+        
+        if len(empty_components) > 0:
+            # Remove empty components from responsibilities
+            mask = torch.ones(self.K, dtype=torch.bool)
+            mask[empty_components] = False
+            self.params["responsib"] = self.params["responsib"][mask]
+            
+            # Recompute cluster assignments with updated responsibilities
+            self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim=0)
+            for key, _ in self.params.items():
+                if key in keys and isinstance(self.params[key], torch.Tensor) and self.params[key].shape[0] == self.K:
+                    self.params[key] = self.params[key][mask]  # Keep only non-empty rows
+
+            # Update the number of components
+            self.final_K = self.params["responsib"].shape[0]
+        else:
+            self.final_K = self.K
+        
         return lks
-    
-    # def compute_euclidean_distance(self, t1, t2):
-    #     # Flatten tensors to vectors
-    #     t1_flat = t1.flatten()
-    #     t2_flat = t2.flatten()
-    #     return torch.norm(t1_flat - t2_flat).item()
-
-    # def compute_max_relative_distance(self, old, new):
-    #     old_flat = old.flatten()
-    #     new_flat = new.flatten()
-    #     # Compute relative distances element-wise
-    #     diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
-    #     # Return the maximum relative distance
-    #     return torch.max(diff_mix).item()
-
-    # def compute_mixing_distances(self, vector):
-    #     distances = []
-    #     distances_euc = []
-    #     for i in range(1, len(vector)):
-    #         # Compute the maximum relative distance for consecutive parameter vectors
-    #         dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
-    #         distances.append(dist)
-    #         dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
-    #         distances_euc.append(dist_euc)
-    #     return distances, distances_euc
 
     def compute_euclidean_distance(self, t1, t2):
         # Flatten tensors to vectors
@@ -1119,8 +1095,7 @@ class mobster_MV():
         plt.show()
         plt.close()
 
-
-    def plot(self):
+    def plot_old(self):
         """
         Plot the results.
         """

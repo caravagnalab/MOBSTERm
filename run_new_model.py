@@ -21,102 +21,21 @@ from utils.create_beta_pareto_dataset import *
 import os
 import time
 
-data_folder = 'new_run/w/set7_delta_'
+# data_folder = 'paper_new/set7_55_57_59_final4'
 
-purity = 1
 """
-N1 = 500
-N2 = 500
-N3 = 500
-N4 = 500
-N5 = 500
-N6 = 500
-seed = 123
-# Component 1
-phi_beta_x = 0.5
-k_beta_x = 300
-phi_beta_y = 0.5
-k_beta_y= 300
-n1=100
-NV1, DP1 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n1, N=N1, seed=seed)
-
-
-# Component 2
-phi_beta_x = 0.5
-k_beta_x = 300
-phi_beta_y = 1e-10
-k_beta_y= 300
-n2=100
-NV2, DP2 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n2, N=N2, seed=seed)
-NV2[:,1] = torch.tensor(0, dtype=NV2.dtype)
-NV = torch.concat((NV1,NV2))
-DP = torch.concat((DP1,DP2))
-
-# Component 3
-phi_beta_x = 0.2
-k_beta_x = 300
-phi_beta_y = 1e-10
-k_beta_y= 300
-n3=100
-NV3, DP3 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n3, N=N3, seed=seed)
-NV3[:,1] = torch.tensor(0, dtype=NV3.dtype)
-NV = torch.concat((NV,NV3))
-DP = torch.concat((DP,DP3))
-
-
-# Component 4
-phi_beta_x = 1e-10
-k_beta_x = 300
-phi_beta_y = 0.4
-k_beta_y= 150
-n4=100
-NV4, DP4 = beta_binomial_component(phi_beta_x = phi_beta_x, k_beta_x = k_beta_x, phi_beta_y = phi_beta_y, k_beta_y= k_beta_y, n=n4, N=N4, seed=seed)
-NV4[:,0] = torch.tensor(0, dtype=NV4.dtype)
-NV = torch.concat((NV,NV4))
-DP = torch.concat((DP,DP4))
-
-
-# Component 5
-L_pareto = 0.01
-H_pareto = 0.5
-alpha_pareto = 1.5 # x-axis
-phi_beta = 1e-10 # y-axis
-k_beta = 300
-n5=100
-NV5, DP5 = pareto_binomial_component(alpha=alpha_pareto, L=L_pareto, H=H_pareto, phi_beta = phi_beta, k_beta = k_beta, n=n5, N=N5,exchanged = False, seed = seed)
-NV5[:,1] = torch.tensor(0, dtype=NV1.dtype)
-NV5[np.where(NV5[:,0] == 0), 0] = torch.tensor(1, dtype=NV1.dtype)
-NV = torch.concat((NV,NV5))
-DP = torch.concat((DP,DP5))
-print(NV.shape)
-print(DP.shape)
-
-
-# Component 6
-alpha_pareto = 1.5
-phi_beta = 1e-10
-k_beta = 300
-n6=100
-NV6, DP6 = pareto_binomial_component(alpha=alpha_pareto, L=L_pareto, H=H_pareto, phi_beta = phi_beta, k_beta = k_beta, n=n6, N=N6, exchanged = True, seed = seed)
-NV6[:,0] = torch.tensor(0, dtype=NV6.dtype)
-NV6[np.where(NV6[:,1] == 0), 1] = torch.tensor(1, dtype=NV1.dtype)
-NV = torch.concat((NV,NV6))
-DP = torch.concat((DP,DP6))
-"""
-
-
-
-
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 
 sets = [55, 57, 59, 62]
 s_number = 7
-"""
+purity = [0.88, 0.88, 0.88, 0.8]
+
 data = pd.read_csv("./data/real_data/Set6_mutations.csv")
 
 sets = [42, 44, 45, 46, 47, 48]
 s_number = 6
-"""
+purity = [0.66, 0.72, 0.80, 0.80, 0.80, 0.80]
+
 
 NV_list = []
 DP_list = []
@@ -130,6 +49,60 @@ for s in sets:
 
 NV = torch.cat(NV_list, dim=1)
 DP = torch.cat(DP_list, dim=1)
+K_list = [15,16,17,18,19,20,21,22,23,24]
+"""
+"""
+data = pd.read_csv("./data/hitchhikers/new_hitchhikers.csv")
+sets = ['Sample.A', 'Sample.B']
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    print(s)
+    NV = torch.tensor(data[f'{s}.NV'].to_numpy())
+    DP = torch.tensor(data[f'{s}.DP'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
+
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+purity = [1,1]
+print(NV.shape, DP.shape)
+K_list = [4,5,6,7,8,9,10,11]
+"""
+""""""
+
+data = pd.read_csv("./data/real_data/Set7_mutations.csv")
+columns_to_check = ["Set7_55.NV", "Set7_57.NV", "Set7_59.NV"]
+data = data[~(data[columns_to_check] == 0).all(axis=1)]
+
+data.to_csv("./data/real_data/Set7_55_57_59.csv", index=False)
+
+sets = [55, 57, 59]
+s_number = 7
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    NV = torch.tensor(data[f'Set{s_number}_{s}.NV'].to_numpy())
+    DP = torch.tensor(data[f'Set{s_number}_{s}.DP'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1)) 
+    DP_list.append(DP.view(-1, 1))
+
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+vaf = NV/DP
+# cond = np.where((vaf[:,0] == 0) & (vaf[:,1] == 0) & (vaf[:,2] == 0))[0]
+# NV = np.delete(NV, cond, axis=0)
+# DP = np.delete(DP, cond, axis=0)
+purity = [0.88, 0.88, 0.88]
+# K_list = [11,12,13,14,15,16,17,18]
+K_list = [14,15,16,17,18,19,20,21]
+# K_list = [4,5,6,7,8,9,10,11,12,13]
 
 """
 data = pd.read_csv("./data/gbm_B7R7.csv")
@@ -147,15 +120,70 @@ for s in sets:
     DP_list.append(DP.view(-1, 1))  # Ensure correct shape
 NV = torch.cat(NV_list, dim=1)
 DP = torch.cat(DP_list, dim=1)
-purity = 0.9
+K_list = [4,5,6,7,8,9,10,11]
+
 """
 """
+
 NV = pd.read_csv("./data/hitchhikers/NV_bigger2.csv")
 DP = pd.read_csv("./data/hitchhikers/DP_bigger2.csv")
 
 NV = torch.tensor(NV.values)
 DP = torch.tensor(DP.values)
+K_list = [4,5,6,7,8,9,10,11]
 """
+
+"""
+data = pd.read_csv("./data/joint_table.csv")
+
+sets = ['Pre', 'RL']
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    NV = torch.tensor(data[f'NV.{s}'].to_numpy())
+    DP = torch.tensor(data[f'DP.{s}'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+K_list = [6,7,8,9,10,11,12,13]
+purity = [1,1]
+"""
+"""
+NV = pd.read_csv("./data/admixing/NV_admixing4.csv")
+DP = pd.read_csv("./data/admixing/DP_admixing4.csv")
+
+NV = torch.tensor(NV.values)
+DP = torch.tensor(DP.values)
+K_list = [7,8,9,10,11,12]
+purity = [1,1]
+"""
+""""""
+# data = pd.read_csv('/Users/elenarivaroli/orfeo_remote/scratch/tesimagistrale/subclonal_deconvolution_mv_examples/hitchhiker_mirage_longitudinal_bigger/hitchhikers_bigger.csv')
+# data = pd.read_csv('/Users/elenarivaroli/orfeo_remote/scratch/tesimagistrale/subclonal_deconvolution_mv_examples/admixing4/admixing4.csv')
+# data = pd.read_csv('./data/hitchhikers/hitchhikers_bigger.csv')
+data = pd.read_csv('../subclonal_deconvolution_mv_examples/hitchhiker_mirage_final2/hitchhikers_final2.csv')
+sets = ['Sample.A', 'Sample.B']
+# sets = ['Sample.B', 'Sample.A']
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    print(s)
+    NV = torch.tensor(data[f'{s}.NV'].to_numpy())
+    DP = torch.tensor(data[f'{s}.DP'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
+
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+purity = [1,1]
+K_list = [4,5,6,7,8,9,10,11,12]
 
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
@@ -241,7 +269,7 @@ plt.close()
 
 save = True
 seed_list = [41,42]
-K_list = [15,16,17,18,19,20,21,22]
+# K_list = [15,16,17,18,19,20,21,22]
 # K_list = [4,5,6,7,8,9,10,11]
 # Record the start time
 start_time = time.time()
@@ -330,14 +358,14 @@ for i, k in enumerate(K_list):
 
     elements_for_K = mb_list[start_idx:end_idx]
     # values_for_specific_key = [d.final_dict["bic"] for d in elements_for_K]
-    values_for_specific_key = [d.final_dict["bic"] for d in elements_for_K] # Given a specific K, select the seed with the lowest bic_sampling_p
+    values_for_specific_key = [d.final_dict["icl"] for d in elements_for_K] # Given a specific K, select the seed with the lowest bic_sampling_p
     min_idx = values_for_specific_key.index(min(values_for_specific_key))
     min_idx = start_idx + min_idx
     
     lk = mb_list[min_idx].final_dict["final_likelihood"]
     bic = mb_list[min_idx].final_dict["bic"]
     icl = mb_list[min_idx].final_dict["icl"]
-    print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk = {lk}, bic = {bic}")
+    print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk = {lk}, icl = {icl}")
     # print(f"k = {k}, seed = {seed_list[min_idx-start_idx]}: lk sampling p = {lk_sampling}, bic sampling = {bic_sampling}")
     lk_list.append(lk)
     bic_list.append(bic)
