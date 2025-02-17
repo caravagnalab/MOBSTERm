@@ -27,7 +27,6 @@ test_generative/final_our_model/out_files/
 test_generative/final_our_model/results/
 saved_objects/
 out_files/
-data/
 
 *.out
 ._*
