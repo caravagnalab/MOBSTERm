@@ -18,11 +18,11 @@ from itertools import combinations
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from sklearn.cluster import KMeans
-from BoundedPareto import BoundedPareto
+from .BoundedPareto import BoundedPareto
 
 from collections import defaultdict
 from pandas.core.common import flatten
-from plot_functions import *
+from .plot_functions import *
 
 
 def convert_to_list(item):
@@ -113,7 +113,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,12
                 mb_final = mb_best_seed
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
     
-    return mb_final, mb_list, best_K, best_total_seed
+    return mb_final, mb_list
 
 
 class mobster_MV():
@@ -142,6 +142,7 @@ class mobster_MV():
                 DP = DP.unsqueeze(-1)
             vaf = NV.numpy()/DP.numpy()
             cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
+            self.valid_indexes = cond
             NV = NV[cond,:]
             self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
             DP = DP[cond,:]
@@ -1040,22 +1041,6 @@ class mobster_MV():
         ax[1, 1].set_title("Euclidean dist between consecutive iterations")
         ax[1, 1].grid(True, color='gray', linestyle='-', linewidth=0.2)
         ax[1, 1].legend()
-
-        # ax[1,0].plot(dist_pi, label="pi")
-        # ax[1,0].plot(dist_delta, label="delta")
-        # ax[1,0].plot(dist_alpha, label="alpha")
-        # ax[1,0].plot(dist_phi, label="phi")
-        # ax[1,0].set_title("Max relative dist between consecutive iterations")  
-        # ax[1,0].grid(True, color='gray', linestyle='-', linewidth=0.2)  
-        # ax[1,0].legend()
-
-        # ax[1,1].plot(dist_pi_euc, label="pi")
-        # ax[1,1].plot(dist_delta_euc, label="delta")
-        # ax[1,1].plot(dist_alpha_euc, label="alpha")
-        # ax[1,1].plot(dist_phi_euc, label="phi")
-        # ax[1,1].set_title("Euclidean dist between consecutive iterations")  
-        # ax[1,1].grid(True, color='gray', linestyle='-', linewidth=0.2)  
-        # ax[1,1].legend()   
         
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/likelihood_K_{self.K}_seed_{self.seed}.png")

@@ -7,7 +7,7 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from scipy.stats import beta, pareto, expon
-from utils.BoundedPareto import BoundedPareto
+from .BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.cm as cm
 import pandas as pd
