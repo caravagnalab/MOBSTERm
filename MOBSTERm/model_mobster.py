@@ -7,8 +7,6 @@ import json
 import time
 import matplotlib
 
-
-
 import torch
 from torch.distributions import constraints
 from pyro.infer.autoguide import AutoDelta
@@ -17,15 +15,14 @@ from sklearn.mixture import GaussianMixture
 import pandas as pd
 from itertools import combinations
 
-# import matplotlib.pyplot as plt
-# plt.rcParams['font.family'] = 'Arial' # Set Arial as the font
+import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from sklearn.cluster import KMeans
-from utils.BoundedPareto import BoundedPareto
+from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
 from pandas.core.common import flatten
-from utils.plot_functions import *
+from plot_functions import *
 
 
 def convert_to_list(item):
@@ -66,7 +63,6 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,12
         list_to_save = []
         min_bic_seed = torch.tensor(float('inf'))
         if curr_k != 0:
-            # Fai ciclo con 4/5 seed diversi e prendi bic minore
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
                 start_time = time.time()
@@ -118,7 +114,6 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,12
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
     
     return mb_final, mb_list, best_K, best_total_seed
-    # return best_K, best_total_seed
 
 
 class mobster_MV():
@@ -277,18 +272,6 @@ class mobster_MV():
         
         for i in range(K):
             for j in range(D):
-                """
-                if self.kmeans_centers_no_noise[i,j] < 1e-3: # dirac
-                    init_delta[i,j] = torch.tensor([0.3, 0.3, 0.6])
-                    self.dirichlet_conc[i,j] = torch.tensor([1, 1, 1000])
-                elif self.kmeans_centers_no_noise[i,j] < self.phi_beta_L: # pareto
-                    init_delta[i,j] = torch.tensor([0.6, 0.3, 0.3])
-                    self.dirichlet_conc[i,j] = torch.tensor([1000, 1, 1])
-                else:
-                    init_delta[i,j] = torch.tensor([0.3, 0.6, 0.3])
-                    self.dirichlet_conc[i,j] = torch.tensor([1, 1000, 1])
-            
-                """
                 values = torch.tensor([pareto_lk[i,j].item(), beta_lk[i,j].item(), zeros_lk[i,j].item()])
                 # print(values)
                 sorted_indices = torch.argsort(values, descending=True) # list of indices ex. 0,2,1
