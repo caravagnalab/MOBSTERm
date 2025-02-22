@@ -7,3 +7,10 @@
 or 
 
 `git clone https://github.com/caravagnalab/MOBSTERm.git`
+
+### Input data
+MOBSTERm requires two tensors as input:
+- `NV` - number of variant reads that cover a given somatic mutation.
+- `DP` - depth at the corresponding locus.
+ 
+Both tensors have a shape of `N x D`, where `N` is the number of mutations and `D` is the number of samples.
