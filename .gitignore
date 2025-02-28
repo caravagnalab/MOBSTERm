@@ -29,6 +29,9 @@ saved_objects/
 out_files/
 data/
 
+gbm_samples.txt
+run_gbm.py
+
 *.out
 ._*
 *.sh
