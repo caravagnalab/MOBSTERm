@@ -31,6 +31,7 @@ data/
 
 gbm_samples.txt
 run_gbm.py
+run_multiple_hitchhiker.py
 
 *.out
 ._*
