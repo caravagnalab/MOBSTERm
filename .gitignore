@@ -22,3 +22,9 @@ build/
 ._.DS_Store
 *.png
 *.pdf
+
+
+gbm_samples.txt
+run_gbm.py
+run_multiple_hitchhiker.py
+multiple_hitch_params.txt
