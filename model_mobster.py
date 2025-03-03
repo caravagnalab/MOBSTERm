@@ -45,7 +45,7 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -69,7 +69,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,12
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
                 start_time = time.time()
-                curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, 
+                curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, kr = kr,
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
@@ -121,7 +121,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, seed=[123,12
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, purity=None, seed=[123,1234], 
+    def __init__(self, NV = None, DP = None, K = 1, purity=None, kr = None, seed=[123,1234], 
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
@@ -140,33 +140,38 @@ class mobster_MV():
                 Previously estimated purity of the tumor
         """   
 
+        self.seed = seed
+        pyro.clear_param_store()
+        pyro.set_rng_seed(self.seed)
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
+        self.K = K
+        self.par_threshold = par_threshold
+        self.loss_threshold = loss_threshold
+        self.savefig = savefig
+        self.data_folder = data_folder
+
         if NV is not None and DP is not None:
             if NV.ndim == 1:
                 NV = NV.unsqueeze(-1)
                 DP = DP.unsqueeze(-1)
             vaf = NV.numpy()/DP.numpy()
             cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
+            self.valid_indexes = cond
             NV = NV[cond,:]
             self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
             DP = DP[cond,:]
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
             
-        self.K = K
-        if  NV is not None and purity is not None:
-            self.purity = torch.tensor(purity)
-        elif NV is not None:
-            self.purity = torch.ones(NV.shape[1])
-        self.seed = seed
-        self.par_threshold = par_threshold
-        self.loss_threshold = loss_threshold
-        self.savefig = savefig
-        self.data_folder = data_folder
-
-        pyro.clear_param_store()
-        pyro.set_rng_seed(self.seed)
-        torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
-        if NV is not None:
+            if purity is not None:
+                self.purity = torch.tensor(purity)
+            else:
+                self.purity = torch.ones(NV.shape[1])
+            if kr is not None:
+                self.kr = kr
+            else:
+                self.kr = ['1:1']*NV.shape[1]
             self.set_prior_parameters()
         
         # vaf = NV.numpy()/DP.numpy()
@@ -581,9 +586,19 @@ class mobster_MV():
         min_vaf = torch.min(min_values)
         print("Minimum detected VAF:", min_vaf)
         return min_vaf
+    
+    def compute_max_vaf(self):
+        max_vaf = torch.tensor([int(nA) / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        return max_vaf * self.purity # tensor D x 1
+
+    def compute_max_pareto(self):
+        max_vaf = torch.tensor([1 / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        return max_vaf * self.purity # tensor D x 1
+
 
     def set_prior_parameters(self):
-        self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
+        # self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
+        self.max_vaf = self.compute_max_vaf() # tensor D x 1
         self.min_vaf = self.compute_min_vaf()
 
         # phi_beta
@@ -613,7 +628,8 @@ class mobster_MV():
 
         # Bounded pareto
         self.pareto_L = self.min_vaf
-        self.pareto_H = self.max_vaf
+        #self.pareto_H = self.max_vaf
+        self.pareto_H = self.compute_max_pareto()
         self.probs_pareto_init = torch.tensor(0.09)
 
         # Approximated Dirac delta (very narrow Beta around 0)
