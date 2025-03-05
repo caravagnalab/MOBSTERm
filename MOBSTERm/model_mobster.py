@@ -41,24 +41,11 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, s
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
                 curr_mb[j].run_inference(num_iter, lr)
-                """
-                plot_scatter_inference(curr_mb[j])
-                plot_marginals_inference(curr_mb[j])
-                """
+                
                 if curr_mb[j].final_dict['icl'] <= min_bic_seed:
                     min_bic_seed = curr_mb[j].final_dict['icl']
                     mb_best_seed = curr_mb[j]
-                    
                 j+=1
-
-            """
-            plot_marginals(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_deltas(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_paretos(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_betas(mb_b est_seed, savefig = savefig, data_folder = data_folder)
-            plot_responsib(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            plot_mixing_proportions(mb_best_seed, savefig = savefig, data_folder = data_folder)
-            """
             mb_list.append(mb_best_seed)
             if mb_best_seed.final_dict['icl'] <= min_bic:
                 min_bic = mb_best_seed.final_dict['icl']
@@ -75,18 +62,15 @@ class mobster_MV():
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
-        
             NV : numpy array
                 A numpy array containing the NV for each sample -> NV : [NV_s1, NV_s2, ..., NV_sn]
             DP : numpy array
                 A numpy array containing the DP for each sample -> DP : [DP_s1, DP_s2, ..., DP_sn]
             K : int
                 Number of clonal/subclonal clusters
-            tail: int
-                1 if inference is to perform with Pareto tail, 0 otherwise
-            purity: float
+            purity: list of float
                 List of previously estimated purities of the tumor samples.
-            kr: str
+            kr: list of str
                 List of the karyotypes of the samples in the form major_allele:minor_allele.
         """   
         self.seed = seed
@@ -124,7 +108,6 @@ class mobster_MV():
             self.set_prior_parameters()
 
     def compute_kmeans_centers(self):
-        best_inertia = float('inf')
         best_bic = float('inf')
         self.best_centers = None
         best_labels = None
@@ -206,15 +189,13 @@ class mobster_MV():
         self.init_kappas = torch.tensor(np.tile(kappas, (self.NV.shape[1], 1)).T)
         """
         """"""
-        
 
     def initialize_delta(self):
         phi_beta = self.kmeans_centers
         a_beta = self.get_a_beta(phi_beta, self.k_beta_init)
         b_beta = self.get_b_beta(phi_beta, self.k_beta_init)
         beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers_no_noise)
-        # Note that I had to put 1 as upper bound of BoundedPareto because kmeans centers can also be bigger than 0.5 (due to my clip)
-        # Otherwise the likelihood is infinite
+        
         pareto_lk = BoundedPareto(self.pareto_L, self.alpha_pareto_mean, self.pareto_H).log_prob(self.kmeans_centers_no_noise)
 
         zeros_lk = dist.Beta(self.a_beta_zeros, self.b_beta_zeros).log_prob(self.kmeans_centers_no_noise)
@@ -227,9 +208,8 @@ class mobster_MV():
         for i in range(K):
             for j in range(D):
                 values = torch.tensor([pareto_lk[i,j].item(), beta_lk[i,j].item(), zeros_lk[i,j].item()])
-                # print(values)
+                
                 sorted_indices = torch.argsort(values, descending=True) # list of indices ex. 0,2,1
-                # print(sorted_indices)
                 
                 init_delta[i,j,sorted_indices[0]] = 0.5 # this can be either pareto, beta or private
                 init_delta[i,j,sorted_indices[1]] = 0.3
@@ -243,7 +223,6 @@ class mobster_MV():
                 self.dirichlet_conc[i,j,sorted_indices[1]] = 1.
                 self.dirichlet_conc[i,j,sorted_indices[2]] = 1.
                 
-        # print("Init delta: ", init_delta)
         return init_delta
 
 
@@ -282,7 +261,7 @@ class mobster_MV():
         if self.savefig:
             plt.savefig(f"plots/{self.data_folder}/kmeans_K_{self.K}_seed_{self.seed}.png")
         plt.show()
-        # print("kmeans_centers: ", self.kmeans_centers_no_noise)
+        
         plt.close()
 
         if self.K == 1:
@@ -400,27 +379,6 @@ class mobster_MV():
         # Non mi serve log sum exp perchè non devo più sommare sui delta_j
         return stack_tensors # N x D
     
-    def log_beta_par_mix_inference_old(self, probs_pareto, delta, alpha, a_beta, b_beta):
-        # delta -> (D, 3)
-        # a_beta, b_beta, probs_pareto -> [D]
-        delta_pareto = torch.log(delta[:, 0]) + dist.Binomial(total_count=self.DP, probs = probs_pareto).log_prob(self.NV)  # N x D tensor
-        delta_beta = torch.log(delta[:, 1]) + dist.BetaBinomial(a_beta, b_beta, total_count=self.DP).log_prob(self.NV) # N x D tensor
-        delta_zeros = torch.log(delta[:, 2]) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP).log_prob(self.NV) # N x D tensor
-        
-        assert delta_pareto.shape == (self.NV.shape[0],self.NV.shape[1])
-        assert delta_beta.shape == (self.NV.shape[0],self.NV.shape[1])
-        assert delta_zeros.shape == (self.NV.shape[0],self.NV.shape[1])
-        
-        # print("Pareto", delta_pareto[self.idx,:].sum())
-        # print("Beta", delta_beta[self.idx,:].sum())
-        # print("Dirac", delta_zeros[self.idx,:].sum())
-
-        # Stack creates a 3 x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto, delta_beta and delta_zeros
-        log = self.log_sum_exp(torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0))
-        assert log.shape == (self.NV.shape[0],self.NV.shape[1])
-        
-        return  log # N x D
-    
     def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
         # delta -> (K, D, 3)
         # a_beta, b_beta, probs_pareto -> (K, D)
@@ -428,17 +386,11 @@ class mobster_MV():
         expanded_DP = self.DP.unsqueeze(0)  # Shape: 1 x N x D
         expanded_NV = self.NV.unsqueeze(0)  # Shape: 1 x N x D
         delta_ =  torch.softmax(delta / self.temperature, dim=-1)
-        # print(delta_)
+        
         delta_pareto = torch.log(delta_[:, :, 0].unsqueeze(1)) + dist.Binomial(total_count=expanded_DP, probs = probs_pareto.unsqueeze(1)).log_prob(expanded_NV)  # K x N x D tensor
         delta_beta = torch.log(delta_[:, :, 1].unsqueeze(1)) + dist.BetaBinomial(a_beta.unsqueeze(1), b_beta.unsqueeze(1), total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
         delta_zeros = torch.log(delta_[:, :, 2].unsqueeze(1)) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
-       
         
-        """
-        delta_pareto = torch.log(delta[:, :, 0].unsqueeze(1)) + dist.Binomial(total_count=expanded_DP, probs = probs_pareto.unsqueeze(1)).log_prob(expanded_NV)  # K x N x D tensor
-        delta_beta = torch.log(delta[:, :, 1].unsqueeze(1)) + dist.BetaBinomial(a_beta.unsqueeze(1), b_beta.unsqueeze(1), total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
-        delta_zeros = torch.log(delta[:, :, 2].unsqueeze(1)) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
-        """
         # Stack creates a 3 x K x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto, delta_beta and delta_zeros 
         stacked = torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0) # 3 x K x N x D tensor
         log = self.log_sum_exp(stacked) # apply log sum exp on first dimension => K x N x D tensor
@@ -757,10 +709,7 @@ class mobster_MV():
         params = self.get_parameters()
         min_iter = 200
         
-        # vaf = self.NV/self.DP
-        # self.central_ix = np.where((vaf[:,0] > 0.3) & (vaf[:,1] > 0.3))
         for i in range(num_iter):
-            # if i >= min_iter: # posso togliere l'if e prendere qui i parametri da aggiungere alla lista di quelli da printare 
             old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
             for key in old_par:
                 if key in self.params_stop_list:
@@ -783,7 +732,6 @@ class mobster_MV():
 
             self.lks.append(lks.detach().numpy())
             
-            """"""
             if i >= min_iter:
                 new_par = self.get_parameters_stopping(params)
                 check_conv = self.stopping_criteria(old_par, new_par, check_conv)
@@ -825,7 +773,6 @@ class mobster_MV():
         """
         alpha = self.params["alpha_pareto_param"] 
         delta = self.params["delta_param"]  # K x D x 2
-        # delta = self.params["w_param"]  # K x D x 2
         
         phi_beta = self.params["phi_beta_param"]
         k_beta = self.params["k_beta_param"]
@@ -842,7 +789,6 @@ class mobster_MV():
         return lks
 
     def compute_posteriors(self, which = 'posteriors'):
-        
         lks = self.compute_final_lk(which = which) # K x N
         res = torch.zeros(self.K, len(self.NV)) # K x N
         norm_fact = self.log_sum_exp(lks) # sums over the different cluster -> array of size 1 x len(NV)
@@ -851,14 +797,15 @@ class mobster_MV():
             res[k] = torch.exp(lks_k - norm_fact)
         self.params["responsib"] = res
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
-        """"""
+        
+        
         # Find empty components and remove them
         counts = torch.bincount(self.params["cluster_assignments"], minlength=self.K)  # Shape: (K,)
         empty_components = torch.where(counts == 0)[0]  # Indices of empty components
         
 
         keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", 
-                "delta_param", "weights_param", "probs_pareto_param", "w_param"]
+                "delta_param", "weights_param", "probs_pareto_param"]
         
         if len(empty_components) > 0:
             
@@ -875,9 +822,6 @@ class mobster_MV():
 
             # Update the number of components
             self.final_K = self.params["responsib"].shape[0]
-            """
-            self.final_K = self.K
-            """
         else:
             self.final_K = self.K
         
