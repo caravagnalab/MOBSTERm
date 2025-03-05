@@ -146,7 +146,7 @@ def plot_betas(mb, savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
-def plot_marginals(mb, savefig = False, data_folder = None):
+def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
     delta = mb.params["delta_param"]  # K x D x 2
     phi_beta = mb.params["phi_beta_param"]
     if torch.is_tensor(phi_beta):
@@ -245,6 +245,114 @@ def plot_marginals(mb, savefig = False, data_folder = None):
     plt.show()
     plt.close()
 
+
+def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
+    delta = mb.params["delta_param"]  # K x D x 2
+    phi_beta = mb.params["phi_beta_param"]
+    if torch.is_tensor(phi_beta):
+        phi_beta = phi_beta.detach().numpy()
+    else:
+        phi_beta = np.array(phi_beta)
+    
+    kappa_beta = mb.params["k_beta_param"]
+    if torch.is_tensor(kappa_beta):
+        kappa_beta = kappa_beta.detach().numpy()
+    else:
+        kappa_beta = np.array(kappa_beta)
+
+    alpha = mb.params["alpha_pareto_param"]
+    if torch.is_tensor(alpha):
+        alpha = alpha.detach().numpy()
+    else:
+        alpha = np.array(alpha)
+    
+    weights = mb.params["weights_param"]
+    if torch.is_tensor(weights):
+        weights = weights.detach().numpy()
+    else:
+        weights = np.array(weights)
+        
+    labels = mb.params['cluster_assignments']
+    if torch.is_tensor(labels):
+        labels = labels.detach().numpy()
+    else:
+        labels = np.array(labels)
+
+    # For each sample I want to plot all the clusters separately.
+    # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
+    # For each cluster, we want to plot the histogram of the data assigned to that cluster
+    if mb.final_K == 1:
+        fig, axes = plt.subplots(mb.final_K, 1, figsize=(10, 4))
+    else:
+        fig, axes = plt.subplots(mb.final_K, 1, figsize=(10, mb.final_K*3))
+    if mb.final_K == 1:
+        axes = ax = np.array([axes])  # add an extra dimension to make it 2D
+    plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
+    x = np.linspace(0.001, 1, 1000)
+
+    unique_labels = np.unique(labels)
+
+    # color_mapping = colors[:len(unique_labels)]
+    if mb.final_K == mb.K:
+        color_mapping = colors
+    else:
+        color_mapping = colors[:len(unique_labels)]
+    # cmap = cm.get_cmap('tab20')
+    # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+    for k in range(mb.final_K):
+        delta_kd = delta[k]
+        maxx = torch.argmax(delta_kd)
+        if maxx == 1:
+            # plot beta
+            a = phi_beta[k] * kappa_beta[k]
+            b = (1-phi_beta[k]) * kappa_beta[k]
+            pdf = beta.pdf(x, a, b)# * weights[k]
+            axes[k].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+            axes[k].legend()
+        elif maxx == 0:
+            # plot pareto
+            pdf = pareto.pdf(x, alpha[k], scale=mb.pareto_L) #* weights[k]
+            axes[k].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
+            axes[k].legend()
+        else:
+            # private
+            pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
+            axes[k].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
+            axes[k].legend()
+
+        if torch.is_tensor(mb.NV):
+            data = mb.NV[:].numpy()/mb.DP[:].numpy()
+        else:
+            data = np.array(mb.NV[:])/np.array(mb.DP[:])
+        # for i in np.unique(labels):
+        if k in unique_labels:
+            if maxx == 2:
+                n_bins = 50
+            else:
+                n_bins = min(int(np.ceil(np.sqrt(len(data[labels == k])))),30)
+            axes[k].hist(data[labels == k],  density=True, bins=n_bins, color=color_mapping[k],alpha=1, edgecolor='white')
+        else:
+            # Plot an empty histogram because we know there are no points in that k
+            axes[k].hist([], density=True, bins=30, alpha=1)
+        axes[k].set_title(f"Sample {1} - Cluster {k}")
+        axes[k].grid(True, color='gray', linestyle='-', linewidth=0.2)
+        # axes[k,d].set_ylim([0,25])
+        axes[k].set_xlim([-0.01,0.7])
+        plt.tight_layout()
+    if savefig:
+        plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
+    plt.show()
+    plt.close()
+
+
+def plot_marginals_single(mb):
+    D = mb.NV.shape[1]
+    if D == 1:
+        plot_marginals_single_1d(mb)
+    else:
+        plot_marginals_single_nd(mb)
+       
+
 def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     weights = mb.params["weights_param"]
     if torch.is_tensor(weights):
@@ -316,8 +424,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
         plt.show()
     plt.close()
 
-def plot_marginals_inference(mb):
-    D = mb.NV.shape[1]
+def plot_marginals_inference_nd(mb, D):
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
     vaf = (mb.NV / mb.DP)#/purity
     
@@ -365,7 +472,55 @@ def plot_marginals_inference(mb):
         plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb.K}_seed_{mb.seed}.png")
     plt.show()
     plt.close()
+
+def plot_marginals_inference_1d(mb, D):
+    vaf = (mb.NV / mb.DP)
+
+    columns=[f"Sample {d+1}" for d in range(D)]
+    df = pd.DataFrame(vaf.numpy(), columns=columns)
+    mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
+    labels = mb.params["cluster_assignments"].detach().numpy()
+    df['Label'] = labels
+    df['Label'] = df['Label'].astype(str)
+    df['mutation_id'] = mutation_ids
+
+    plt.figure()
+    unique_labels = sorted(df['Label'].unique())  # Ensures fixed order
+
+    palette = colors[:len(unique_labels)]
     
+    if mb.final_K == mb.K:
+        palette = colors
+    else:
+        palette = colors[:len(unique_labels)]
+    
+    color_dict = dict(zip(unique_labels, palette))
+
+    sns.histplot(
+        data=df,x = 'Sample 1', hue='Label', 
+        palette=color_dict,
+        bins=100, multiple='layer', alpha=0.7, edgecolor='white'
+    )
+    
+    plt.ylabel("Count")
+    # ax.set_xlim([0,1])
+    plt.grid(True, alpha=0.3)
+    
+    plt.subplots_adjust(wspace=0.3, hspace=0.3)
+    
+    plt.tight_layout()
+    if mb.savefig:
+        plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb.K}_seed_{mb.seed}.png")
+    plt.show()
+    plt.close()
+
+def plot_marginals_inference(mb):
+    D = mb.NV.shape[1]
+    if D == 1:
+        plot_marginals_inference_1d(mb, D)
+    else:
+        plot_marginals_inference_nd(mb, D)
+        
 def plot_scatter_inference(mb):
     """
     Plot the results.
