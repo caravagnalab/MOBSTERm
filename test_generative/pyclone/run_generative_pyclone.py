@@ -65,7 +65,7 @@ if __name__ == "__main__":
         np.random.seed(seed1)
         
         # Sample mixing proportions for clusters and multiply by N to obtain the number of data in each cluster
-        pi = sample_mixing_prop(K, min_value=0.05) * N
+        pi = sample_mixing_prop(K, min_value=0.008) * N
         # pi = dist.Dirichlet(torch.ones(K)).sample() * N  # Number of data in each cluster
         pi = np.round(pi.numpy()).astype('int')
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
             diff = np.sum(pi) - N
             pi[-1] -= diff
 
-        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, [purity,purity], coverage)
+        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, [purity,purity], coverage, seed1)
   
         plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity, coverage)  
         plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity, coverage)
