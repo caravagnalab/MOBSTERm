@@ -352,7 +352,7 @@ def plot_final_marginals(mb, N, K, D, idx_real, purity, coverage):
     plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/inference_marginals/N_{N}_K_{K}_D_{mb.NV.shape[1]}_inference_{idx_real}.png')
     plt.close()
 
-def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_real, purity, coverage):
+def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_real, purity, coverage, save = True):
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
     vaf = NV/DP    
     num_pairs = len(pairs[0])  # Number of unique pairs
@@ -389,11 +389,12 @@ def plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx_
         idx += 1
     plt.suptitle(f'Orignal data with N = {N} and {K} clusters (i = {idx_real})')
     plt.show()
-    plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real/N_{N}_K_{K}_D_{D}_real_{idx_real}.png')
+    if save:
+        plt.savefig(f'plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real/N_{N}_K_{K}_D_{D}_real_{idx_real}.png')
     plt.close()
 
 
-def plot_marginals_all_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage):
+def plot_marginals_all_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage, save = True):
     fig, axes = plt.subplots(1, D, figsize=(5*D, 4))
     vaf = NV/DP
     plt.suptitle("Marginals")
@@ -407,10 +408,11 @@ def plot_marginals_all_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels
         axes[i].set_xlim([0,1])
 
     plt.show()
-    plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals_all/N_{N}_K_{K}_D_{D}_real_{idx}.png')
+    if save:
+        plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals_all/N_{N}_K_{K}_D_{D}_real_{idx}.png')
     plt.close()
 
-def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage):
+def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_beta, kappa_beta, alpha, idx, purity, coverage, save = True):
     vaf = NV/DP
     copy_vaf = torch.clone(vaf)
     # Replace zeros with a large value that will not be considered as minimum (i.e. 1)
@@ -463,7 +465,8 @@ def plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, ph
             plt.tight_layout()
     
     plt.show()
-    plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals/N_{N}_K_{K}_D_{D}_real_{idx}.png')
+    if save:
+        plt.savefig(f'./plots/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/real_marginals/N_{N}_K_{K}_D_{D}_real_{idx}.png')
     plt.close()
 
 def retrieve_info(mb, N, D):

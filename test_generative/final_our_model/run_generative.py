@@ -9,7 +9,6 @@ import pyro
 import matplotlib.pyplot as plt
 from sklearn.metrics import normalized_mutual_info_score
 from sklearn.metrics import adjusted_rand_score
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 import seaborn as sns
 
 import copy
@@ -65,23 +64,7 @@ if __name__ == "__main__":
         torch.manual_seed(seed1)
         np.random.seed(seed1)
         
-        # Sample mixing proportions for clusters and multiply by N to obtain the number of data in each cluster
-        pi = sample_mixing_prop(K, min_value=0.008) * N
-        # print(pi/N)
-        # print(pi)
-        # pi = dist.Dirichlet(torch.ones(K)).sample() * N  # Number of data in each cluster
-        pi = np.round(pi.numpy()).astype('int')
-
-        # Adjust proportions to ensure they sum to N
-        # print("np.sum(pi)", np.sum(pi))
-        if np.sum(pi) < N:
-            diff = N - np.sum(pi)
-            pi[-1] += diff
-        elif np.sum(pi) > N:
-            diff = np.sum(pi) - N
-            pi[-1] -= diff
-        # print("np.sum(pi)", np.sum(pi))
-        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, pi, D, purity, coverage, seed1)
+        NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, D, purity, coverage, seed1)
 
         plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity[0], coverage)  
         plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity[0], coverage)
@@ -208,33 +191,3 @@ if __name__ == "__main__":
     with open(filename, "w") as file:
         for item in ari_list_init:
             file.write(f"{item}\n")  # Writing each item on a new line
-
-        """
-        # Compute accuracy on predicted distributions (Pareto or Beta)
-        true_distributions = np.array([[0. if elem == 'P' else 1. for elem in sublist] for sublist in unique_types])
-        delta = mb.params["delta_param"]
-        pred_distribtions = np.zeros((mb.K, mb.NV.shape[1]))
-        for k in range(mb.K):
-            for d in range(mb.NV.shape[1]):
-                delta_kd = delta[k, d]
-                maxx = torch.argmax(delta_kd)
-                if maxx == 0: # Pareto
-                    pred_distribtions[k,d] = 0
-                else:
-                    pred_distribtions[k,d] = 1
-        accuracy = accuracy_score(true_labels, predicted_labels)
-        acc_list.append(accuracy)
-        
-        filename = f"results/acc/ari_N_{N}_sub_{K1}"
-        with open(filename, "w") as file:
-            for item in acc_list:
-                file.write(f"{item}\n")  # Writing each item on a new line
-
-        # Confusion matrix
-        conf_matrix = confusion_matrix(true_distributions.flatten(), pred_distribtions.flatten(), labels=[0, 1])
-        conf_matrix_list.append(conf_matrix)
-        filename = f"results/conf_matrix/ari_N_{N}_sub_{K1}"
-        with open(filename, "w") as file:
-            for item in conf_matrix_list:
-                file.write(f"{item}\n")  # Writing each item on a new line
-        """
