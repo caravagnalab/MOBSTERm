@@ -44,18 +44,77 @@ def beta_binomial(N, phi, kappa, depth, L):
         bin[mask] = dist.Binomial(total_count=depth[mask], probs=p[mask]).sample()
     return bin
 
+def sample_kappa():
+    return dist.Uniform(150, 350).sample()
+
+def sample_alpha():
+    return dist.Uniform(0.8, 1.5).sample()  # Pareto shape parameter
+
+def sample_phi(min_phi, max_vaf):
+    return dist.Uniform(min_phi, max_vaf).sample()
+
+def set_pareto_parameters(k, d, alpha, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, 
+                        alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster):
+    
+    type_labels_data[init_idx:end_idx, d] = 0
+    type_labels_cluster[k, d] = 0
+
+    phi_param_data[init_idx:end_idx, d] = -1
+    kappa_param_data[init_idx:end_idx, d] = -1
+    alpha_param_data[init_idx:end_idx, d] = round(alpha.item(), 3)
+
+    phi_param_cluster[k, d] = -1
+    kappa_param_cluster[k, d] = -1
+    alpha_param_cluster[k, d] = round(alpha.item(), 3)
+
+
+def set_beta_parameters(k, d, phi, kappa, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, 
+                        kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster):
+    
+    type_labels_data[init_idx:end_idx, d] = 1 # distribution type 1 for each mutation
+    type_labels_cluster[k, d] = 1 # distribution type 1 for each cluster
+
+    phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)  # phi value for each mutation
+    kappa_param_data[init_idx:end_idx, d] = round(kappa.item(), 3) # kappa value for each mutation
+    alpha_param_data[init_idx:end_idx, d] = -1 # -1 value for each mutation
+
+    phi_param_cluster[k, d] = round(phi.item(), 3)
+    kappa_param_cluster[k, d] = round(kappa.item(), 3)
+    alpha_param_cluster[k, d] = -1
+
+def set_zero_parameters(k, d, phi, init_idx, end_idx, type_labels_data, type_labels_cluster, NV, phi_param_data, kappa_param_data, alpha_param_data,
+                        phi_param_cluster, kappa_param_cluster, alpha_param_cluster):
+    
+    type_labels_cluster[k, d] = 2  # distribution type 2 for each mutation
+    type_labels_data[init_idx:end_idx, d] = 2  # distribution type 2 for each cluster
+
+    NV[init_idx:end_idx, d] = phi
+
+    phi_param_data[init_idx:end_idx, d] = -1
+    kappa_param_data[init_idx:end_idx, d] = -1
+    alpha_param_data[init_idx:end_idx, d] = -1
+
+    phi_param_cluster[k, d] = -1
+    kappa_param_cluster[k, d] = -1
+    alpha_param_cluster[k, d] = -1
+
+
+
 def generate_data_new_model_final(N, K, pi, D, purity, coverage, seed):
     NV = torch.zeros((N, D))
     threshold=0.1
-    cluster_labels = torch.zeros(N)  # one-dimensional labels, one per data
-    type_labels_data = torch.zeros((N, D))  # D-dimensional labels, one per data
-    type_labels_cluster = torch.zeros((K, D))  # D-dimensional label, one per cluster
-    phi_param_data = torch.zeros((N, D))
-    kappa_param_data = torch.zeros((N, D))
-    alpha_param_data = torch.zeros((N, D))
-    phi_param_cluster = torch.zeros((K, D))
-    kappa_param_cluster = torch.zeros((K, D))
-    alpha_param_cluster = torch.zeros((K, D))
+    cluster_labels = torch.zeros(N)  # list to save the true cluster for each mutation
+    type_labels_data = torch.zeros((N, D))  # list to save the true distribution type for each dimension of each mutation
+    type_labels_cluster = torch.zeros((K, D))  # list to save the true distribution type for each dimension of each cluster
+    
+    phi_param_data = torch.zeros((N, D)) # list to save the true phi param for each mutation (-1 if the distribution is not beta)
+    kappa_param_data = torch.zeros((N, D)) # list to save the true kappa param for each mutation (-1 if the distribution is not beta)
+    alpha_param_data = torch.zeros((N, D)) # list to save the true alpha param for each mutation (-1 if the distribution is not pareto)
+    
+    phi_param_cluster = torch.zeros((K, D))  # list to save the true phi param for each cluster (-1 if the distribution is not beta)
+    kappa_param_cluster = torch.zeros((K, D)) # list to save the true kappa param for each cluster (-1 if the distribution is not beta)
+    alpha_param_cluster = torch.zeros((K, D)) # list to save the true alpha param for each cluster (-1 if the distribution is not pareto)
+    
     max_vaf = purity[0]/2
     min_phi = 0.08
     probs_pareto = 0.04
@@ -67,37 +126,28 @@ def generate_data_new_model_final(N, K, pi, D, purity, coverage, seed):
 
     # Always have a Beta-Binomial component with phi=max_vaf in all dimensions
     k = 0
+    init_idx = 0
+    end_idx = pi[k]
     for d in range(D):
-        p = max_vaf
-        kappa = dist.Uniform(150, 350).sample()
-        NV[:pi[k], d] = beta_binomial(pi[k], p, kappa, depth[:pi[k],d], pareto_L)
-        type_labels_data[:pi[k], d] = torch.tensor(1)  # beta
-        type_labels_cluster[k, d] = torch.tensor(1)  # beta
-        phi_param_data[:pi[k], d] = p
-        kappa_param_data[:pi[k], d] = round(kappa.item(), 3)
-        alpha_param_data[:pi[k], d] = -1
-        phi_param_cluster[k, d] = p
-        kappa_param_cluster[k, d] = round(kappa.item(), 3)
-        alpha_param_cluster[k, d] = -1
+        phi = torch.tensor(max_vaf)
+        kappa = sample_kappa()
+        NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[:pi[k],d], pareto_L)
+
+        set_beta_parameters(k, d, phi, kappa, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+
     cluster_labels[:pi[k]] = k  # cluster k
-    sampled_phi_list.append(torch.tensor([p] * D))
+    sampled_phi_list.append(torch.tensor([phi] * D))
 
     # Always have a Pareto-Binomial component in all dimensions
     k = 1
-
     init_idx = np.sum(pi[:k])
     end_idx = init_idx + pi[k]
     for d in range(D):
-        alpha = dist.Uniform(0.8, 1.5).sample()  # Pareto shape parameter
+        alpha = sample_alpha()
         NV[init_idx:end_idx, d] = pareto_binomial(pi[k], alpha, pareto_L, pareto_H, depth[init_idx:end_idx, d])
-        type_labels_data[init_idx:end_idx, d] = torch.tensor(0)  # pareto
-        type_labels_cluster[k, d] = torch.tensor(0)  # pareto
-        phi_param_data[init_idx:end_idx, d] = -1
-        kappa_param_data[init_idx:end_idx, d] = -1
-        alpha_param_data[init_idx:end_idx, d] = round(alpha.item(), 3)
-        phi_param_cluster[k, d] = -1
-        kappa_param_cluster[k, d] = -1
-        alpha_param_cluster[k, d] = round(alpha.item(), 3)
+
+        set_pareto_parameters(k, d, alpha, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+    
     cluster_labels[init_idx:end_idx] = k  # cluster k
     sampled_phi_list.append(torch.tensor([probs_pareto] * D))
     
@@ -116,101 +166,65 @@ def generate_data_new_model_final(N, K, pi, D, purity, coverage, seed):
             for d in range(D):
                 choose_dist = torch.randint(1, 4, (1,)).item() # randomly sample a value between 1, 2 or 3
                 if choose_dist == 1:
-                    phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(150, 350).sample()
+                    phi, kappa = sample_phi(min_phi, max_vaf), sample_kappa()
                     NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
-                    type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
-                    type_labels_cluster[k, d] = torch.tensor(1)  # beta
-                    phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
-                    kappa_param_data[init_idx:end_idx, d] = round(kappa.item(), 3)
-                    alpha_param_data[init_idx:end_idx, d] = -1
-                    phi_param_cluster[k, d] = round(phi.item(), 3)
-                    kappa_param_cluster[k, d] = round(kappa.item(), 3)
-                    alpha_param_cluster[k, d] = -1
+
+                    set_beta_parameters(k, d, phi, kappa, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+
                     curr_sampled_phi.append(phi)
+
                 elif choose_dist == 2: # Pareto-Binomial for this dimension
                     if pareto_count >= (D-1): 
                         # if the number of pareto dimensions are already D-1 (all but 1), then sample either a beta or zeros
                         if torch.rand(1).item() < 0.5 and zeros_count < (D-1): # zeros
                             phi = 0
-                            type_labels_cluster[k, d] = torch.tensor(2)  # zeros
-                            type_labels_data[init_idx:end_idx, d] = torch.tensor(2)  # zeros
-                            NV[init_idx:end_idx, d] = phi
-                            phi_param_data[init_idx:end_idx, d] = -1
-                            kappa_param_data[init_idx:end_idx, d] = -1
-                            alpha_param_data[init_idx:end_idx, d] = -1
-                            phi_param_cluster[k, d] = -1
-                            kappa_param_cluster[k, d] = -1
-                            alpha_param_cluster[k, d] = -1
+
+                            set_zero_parameters(k, d, phi, init_idx, end_idx, type_labels_data, type_labels_cluster, NV, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+                            
                             zeros_count += 1
                             curr_sampled_phi.append(phi)                            
                         else: # beta
-                            phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(150, 350).sample()
+                            phi, kappa = sample_phi(min_phi, max_vaf), sample_kappa()
                             NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
-                            type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
-                            type_labels_cluster[k, d] = torch.tensor(1)  # beta
-                            phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
-                            kappa_param_data[init_idx:end_idx, d] = round(kappa.item(), 3)
-                            alpha_param_data[init_idx:end_idx, d] = -1
-                            phi_param_cluster[k, d] = round(phi.item(), 3)
-                            kappa_param_cluster[k, d] = round(kappa.item(), 3)
-                            alpha_param_cluster[k, d] = -1                            
+
+                            set_beta_parameters(k, d, phi, kappa, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+
                             curr_sampled_phi.append(phi)
                             
                     else: # pareto
-                        alpha = dist.Uniform(0.8, 1.5).sample()
+                        alpha = sample_alpha()
                         NV[init_idx:end_idx, d] = pareto_binomial(pi[k], alpha, pareto_L, pareto_H, depth[init_idx:end_idx, d])
-                        type_labels_data[init_idx:end_idx, d] = torch.tensor(0)  # pareto
-                        type_labels_cluster[k, d] = torch.tensor(0)  # pareto
-                        phi_param_data[init_idx:end_idx, d] = -1
-                        kappa_param_data[init_idx:end_idx, d] = -1
-                        alpha_param_data[init_idx:end_idx, d] = round(alpha.item(), 3)
-                        phi_param_cluster[k, d] = -1
-                        kappa_param_cluster[k, d] = -1
-                        alpha_param_cluster[k, d] = round(alpha.item(), 3)
+
+                        set_pareto_parameters(k, d, alpha, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+
                         pareto_count += 1
                         curr_sampled_phi.append(probs_pareto)
+
                 elif choose_dist == 3: # Zeros for this dimension
                     if zeros_count >= (D-1): 
                         # if the number of zeros dimensions are already D-1 (all but 1), then sample either a beta or a pareto
                         if torch.rand(1).item() < 0.5 and pareto_count < (D-1):  # zeros
-                            alpha = dist.Uniform(0.8, 1.5).sample()
+                            alpha = sample_alpha()
                             NV[init_idx:end_idx, d] = pareto_binomial(pi[k], alpha, pareto_L, pareto_H, depth[init_idx:end_idx, d])
-                            type_labels_data[init_idx:end_idx, d] = torch.tensor(0)  # pareto
-                            type_labels_cluster[k, d] = torch.tensor(0)  # pareto
-                            phi_param_data[init_idx:end_idx, d] = -1
-                            kappa_param_data[init_idx:end_idx, d] = -1
-                            alpha_param_data[init_idx:end_idx, d] = round(alpha.item(), 3)
-                            phi_param_cluster[k, d] = -1
-                            kappa_param_cluster[k, d] = -1
-                            alpha_param_cluster[k, d] = round(alpha.item(), 3)
+
+                            set_pareto_parameters(k, d, alpha, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+                            
                             pareto_count += 1
                             curr_sampled_phi.append(probs_pareto)
+                            
                         else: # beta
-                            phi, kappa = dist.Uniform(min_phi, max_vaf).sample(), dist.Uniform(150, 350).sample()
+                            phi, kappa = sample_phi(min_phi, max_vaf), sample_kappa()
                             NV[init_idx:end_idx, d] = beta_binomial(pi[k], phi, kappa, depth[init_idx:end_idx, d],pareto_L)
-                            type_labels_data[init_idx:end_idx, d] = torch.tensor(1)  # beta
-                            type_labels_cluster[k, d] = torch.tensor(1)  # beta
-                            phi_param_data[init_idx:end_idx, d] = round(phi.item(), 3)
-                            kappa_param_data[init_idx:end_idx, d] = round(kappa.item(), 3)
-                            alpha_param_data[init_idx:end_idx, d] = -1
-                            phi_param_cluster[k, d] = round(phi.item(), 3)
-                            kappa_param_cluster[k, d] = round(kappa.item(), 3)
-                            alpha_param_cluster[k, d] = -1
+
+                            set_beta_parameters(k, d, phi, kappa, init_idx, end_idx, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
+
                             curr_sampled_phi.append(phi)
                     else:
                         phi = 0
-                        type_labels_cluster[k, d] = torch.tensor(2)  # zeros
-                        type_labels_data[init_idx:end_idx, d] = torch.tensor(2)  # zeros
-                        NV[init_idx:end_idx, d] = phi
-                        phi_param_data[init_idx:end_idx, d] = -1
-                        kappa_param_data[init_idx:end_idx, d] = -1
-                        alpha_param_data[init_idx:end_idx, d] = -1
-                        phi_param_cluster[k, d] = -1
-                        kappa_param_cluster[k, d] = -1
-                        alpha_param_cluster[k, d] = -1
+
+                        set_zero_parameters(k, d, phi, init_idx, end_idx, type_labels_data, type_labels_cluster, NV, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster)
                         zeros_count += 1
                         curr_sampled_phi.append(pareto_L - threshold)
-
             
             # Convert curr_sampled_phi to a tensor
             curr_sampled_phi_tensor = torch.tensor(curr_sampled_phi)
