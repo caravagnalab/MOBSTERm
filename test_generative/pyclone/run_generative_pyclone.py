@@ -65,7 +65,7 @@ if __name__ == "__main__":
         np.random.seed(seed1)
         
         # Sample mixing proportions for clusters and multiply by N to obtain the number of data in each cluster
-        pi = sample_mixing_prop(K, min_value=0.008) * N
+        pi = sample_mixing_prop(K, min_value=0.006) * N
         # pi = dist.Dirichlet(torch.ones(K)).sample() * N  # Number of data in each cluster
         pi = np.round(pi.numpy()).astype('int')
 
