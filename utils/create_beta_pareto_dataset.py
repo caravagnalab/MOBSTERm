@@ -254,6 +254,9 @@ def generate_data_new_model_final(N, K, D, purity, coverage, seed):
             # if yes, add it to sampled_phi_list and go to the next iteration of k, otherwise repeat this loop over d
             
             # Check if the Euclidean distance is below the threshold for any sampled_phi in sampled_phi_list
+            # print("curr_sampled_phi_tensor", curr_sampled_phi_tensor)
+            # print("sampled_phi_list", sampled_phi_list)
+            # print([euclidean_distance(curr_sampled_phi_tensor, phi) for phi in sampled_phi_list])
             if all(euclidean_distance(curr_sampled_phi_tensor, phi) >= threshold for phi in sampled_phi_list):
                 # If no element in sampled_phi_list is too close, add to sampled_phi_list and break the loop
                 sampled_phi_list.append(curr_sampled_phi_tensor)
