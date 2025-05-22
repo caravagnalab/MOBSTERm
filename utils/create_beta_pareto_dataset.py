@@ -6,8 +6,6 @@ import scipy.stats as stats
 
 import torch
 
-# ---------------#
-
 def euclidean_distance(a, b):
     return torch.dist(a, b)
 
