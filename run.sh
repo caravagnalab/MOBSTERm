@@ -6,7 +6,7 @@
 #SBATCH -p THIN
 #SBATCH --time=24:00:00
 #SBATCH --mem=100gb
-#SBATCH --output=./out_files/paper_new/hitchhikers_final2.out
+#SBATCH --output=./out_files/paper_new/set7_new_test.out
 
 python3 run_new_model.py
 

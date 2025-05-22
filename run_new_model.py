@@ -21,7 +21,7 @@ from utils.create_beta_pareto_dataset import *
 import os
 import time
 
-# data_folder = 'paper_new/set7_55_57_59_final4'
+data_folder = 'paper_new/set7_new_test'
 
 """
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
@@ -78,7 +78,7 @@ data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 columns_to_check = ["Set7_55.NV", "Set7_57.NV", "Set7_59.NV"]
 data = data[~(data[columns_to_check] == 0).all(axis=1)]
 
-data.to_csv("./data/real_data/Set7_55_57_59.csv", index=False)
+# data.to_csv("./data/real_data/Set7_55_57_59.csv", index=False)
 
 sets = [55, 57, 59]
 s_number = 7
@@ -100,9 +100,7 @@ vaf = NV/DP
 # NV = np.delete(NV, cond, axis=0)
 # DP = np.delete(DP, cond, axis=0)
 purity = [0.88, 0.88, 0.88]
-# K_list = [11,12,13,14,15,16,17,18]
-K_list = [14,15,16,17,18,19,20,21]
-# K_list = [4,5,6,7,8,9,10,11,12,13]
+K_list = [16,17,18,19,20,21,22,23]
 
 """
 data = pd.read_csv("./data/gbm_B7R7.csv")
@@ -161,7 +159,7 @@ DP = torch.tensor(DP.values)
 K_list = [7,8,9,10,11,12]
 purity = [1,1]
 """
-""""""
+"""
 # data = pd.read_csv('/Users/elenarivaroli/orfeo_remote/scratch/tesimagistrale/subclonal_deconvolution_mv_examples/hitchhiker_mirage_longitudinal_bigger/hitchhikers_bigger.csv')
 # data = pd.read_csv('/Users/elenarivaroli/orfeo_remote/scratch/tesimagistrale/subclonal_deconvolution_mv_examples/admixing4/admixing4.csv')
 # data = pd.read_csv('./data/hitchhikers/hitchhikers_bigger.csv')
@@ -184,7 +182,7 @@ NV = torch.cat(NV_list, dim=1)
 DP = torch.cat(DP_list, dim=1)
 purity = [1,1]
 K_list = [4,5,6,7,8,9,10,11,12]
-
+"""
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
 if not os.path.exists(folder_path):
