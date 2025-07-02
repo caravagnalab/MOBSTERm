@@ -11,6 +11,7 @@ import ast
 
 import torch
 import seaborn as sns
+import pyreadr
 
 import matplotlib.pyplot as plt
 
@@ -21,7 +22,7 @@ from utils.create_beta_pareto_dataset import *
 import os
 import time
 
-data_folder = 'paper_new/set7_new_test'
+data_folder = 'SPN/SPN04'
 
 """
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
@@ -73,7 +74,7 @@ print(NV.shape, DP.shape)
 K_list = [4,5,6,7,8,9,10,11]
 """
 """"""
-
+"""
 data = pd.read_csv("./data/real_data/Set7_mutations.csv")
 columns_to_check = ["Set7_55.NV", "Set7_57.NV", "Set7_59.NV"]
 data = data[~(data[columns_to_check] == 0).all(axis=1)]
@@ -101,7 +102,7 @@ vaf = NV/DP
 # DP = np.delete(DP, cond, axis=0)
 purity = [0.88, 0.88, 0.88]
 K_list = [16,17,18,19,20,21,22,23]
-
+"""
 """
 data = pd.read_csv("./data/gbm_B7R7.csv")
 
@@ -183,6 +184,28 @@ DP = torch.cat(DP_list, dim=1)
 purity = [1,1]
 K_list = [4,5,6,7,8,9,10,11,12]
 """
+
+data = pyreadr.read_r('/u/cdslab/erivar00/scratch/GitHub/subclonal_validation_data/viber_fit.Rds') 
+data = data[None] 
+sets = ['SPN04_SPN04_1.2', 'SPN04_SPN04_1.1']
+
+NV_list = []
+DP_list = []
+
+for s in sets:
+    print(s)
+    NV = torch.tensor(data[f'NV.{s}'].to_numpy())
+    DP = torch.tensor(data[f'DP.{s}'].to_numpy())
+    
+    NV_list.append(NV.view(-1, 1))  # Ensure correct shape
+    DP_list.append(DP.view(-1, 1))  # Ensure correct shape
+
+NV = torch.cat(NV_list, dim=1)
+DP = torch.cat(DP_list, dim=1)
+purity = [0.9,0.9]
+K_list = [2,3,4,5,6,7,8,9,10]
+
+
 folder_path = f"plots/{data_folder}"
 # Create the directory if it does not exist
 if not os.path.exists(folder_path):

@@ -46,10 +46,11 @@ if __name__ == "__main__":
     N = args.N  # number of mutations
     K = args.K  # number of clusters
     D = args.D  # number of samples
-    purity = args.p
+    # purity = args.p
+    purity=[args.p]*D
     coverage = args.cov
 
-    create_folder(N,K,D,purity,coverage)
+    create_folder(N,K,D,purity[0],coverage)
     
 
     nmi_list = []
@@ -66,8 +67,9 @@ if __name__ == "__main__":
         
         NV, DP, cluster_labels, type_labels_data, type_labels_cluster, phi_param_data, kappa_param_data, alpha_param_data, phi_param_cluster, kappa_param_cluster, alpha_param_cluster  = generate_data_new_model_final(N, K, D, purity, coverage, seed1)
 
-        plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity, coverage)  
-        plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity, coverage)
+        # purity=purity[0]
+        plot_scatter_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, idx, purity[0], coverage)  
+        plot_marginals_real(NV, DP, N, K, D, type_labels_cluster, cluster_labels, phi_param_cluster, kappa_param_cluster, alpha_param_cluster, idx, purity[0], coverage)
         
         # Generate mutation IDs
         mutation_ids = [f"M{i}" for i in range(N)]
@@ -83,16 +85,16 @@ if __name__ == "__main__":
                 "major_cn": 1,
                 "minor_cn": 1,
                 "normal_cn": 1,
-                "tumour_content": purity,
+                "tumour_content": purity[0],
                 "VAF": NV[:, d].numpy()/DP[:, d].numpy()
             })
             dataframes.append(df)
         data = pd.concat(dataframes, axis=0, ignore_index=True)
-        data_path = f'data/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/N_{N}_K_{K}_D_{D}_real_{idx}.tsv'
+        data_path = f'data/p_{str(purity[0]).replace(".", "")}_cov_{coverage}/D_{D}/N_{N}_K_{K}_D_{D}_real_{idx}.tsv'
         data.to_csv(data_path,  sep='\t', index=False)
 
-        fit_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_fit_{idx}.h5'
-        best_fit_path = f'results/p_{str(purity).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_best_fit_{idx}.h5'
+        fit_path = f'results/p_{str(purity[0]).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_fit_{idx}.h5'
+        best_fit_path = f'results/p_{str(purity[0]).replace(".", "")}_cov_{coverage}/D_{D}/fit_files/N_{N}_K_{K}_D_{D}_best_fit_{idx}.h5'
         if K == 4:
             max_K = 10
         else:
@@ -108,7 +110,7 @@ if __name__ == "__main__":
         fitted_data = pd.merge(data, fit, how = 'outer', on=['mutation_id','sample_id'])
         table_to_print = fitted_data.pivot_table(index = ['mutation_id','cluster_id'], columns = 'sample_id', values = 'VAF', aggfunc = 'first').reset_index()
         
-        plot_scatter_final(NV, DP, D, table_to_print, N, K, idx, purity, coverage)
+        plot_scatter_final(NV, DP, D, table_to_print, N, K, idx, purity[0], coverage)
 
         result = (
             fitted_data.pivot_table(
@@ -158,7 +160,7 @@ if __name__ == "__main__":
         result_sorted['True_kappa'] = [[round(val, 3) for val in row.tolist()] for row in kappa_param_data]
         result_sorted['True_alpha'] = [[round(val, 3) for val in row.tolist()] for row in alpha_param_data]
         
-        csv_filename = f'./results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/csv/N_{N}_K_{K}_D_{D}_df_{idx}.csv'
+        csv_filename = f'./results/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/csv/N_{N}_K_{K}_D_{D}_df_{idx}.csv'
         result_sorted.to_csv(csv_filename, index=False)
 
 
@@ -174,12 +176,12 @@ if __name__ == "__main__":
         ari_list.append(ari)
 
 
-    filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/nmi/nmi_N_{N}_K_{K}_D_{D}.txt"
+    filename = f"results/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/nmi/nmi_N_{N}_K_{K}_D_{D}.txt"
     with open(filename, "w") as file:
         for item in nmi_list:
             file.write(f"{item}\n")  # Writing each item on a new line
 
-    filename = f"results/p_{str(purity).replace('.', '')}_cov_{coverage}/D_{D}/ari/ari_N_{N}_K_{K}_D_{D}.txt"
+    filename = f"results/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/ari/ari_N_{N}_K_{K}_D_{D}.txt"
     with open(filename, "w") as file:
         for item in ari_list:
             file.write(f"{item}\n")  # Writing each item on a new line

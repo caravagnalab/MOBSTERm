@@ -18,7 +18,7 @@ def sample_mixing_prop(K, min_value=0.05):
 
 def find_mixing_proportions(K, N):
     # Sample mixing proportions for clusters and multiply by N to obtain the number of data in each cluster
-    pi = sample_mixing_prop(K, min_value=0.008) * N
+    pi = sample_mixing_prop(K, min_value=0.002) * N
     # print(pi/N)
     # print(pi)
     # pi = dist.Dirichlet(torch.ones(K)).sample() * N  # Number of data in each cluster
