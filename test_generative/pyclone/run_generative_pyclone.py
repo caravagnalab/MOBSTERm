@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "sample_id": f"S_{d}",
                 "major_cn": 1,
                 "minor_cn": 1,
-                "normal_cn": 1,
+                "normal_cn": 2,
                 "tumour_content": purity[0],
                 "VAF": NV[:, d].numpy()/DP[:, d].numpy()
             })

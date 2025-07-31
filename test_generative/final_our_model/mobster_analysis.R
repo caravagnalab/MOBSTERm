@@ -16,38 +16,47 @@ require(VIBER)
 require(ggpubr)
 library(randnet)
 
-# p = 0.7
-# cov = 70
-# D = 3
-# N = 15000
-# K = 6
-# idx = 2
+# p = 1.0
+# cov = 100
+# D = 2
+# N = 5000
+# K = 4
+# idx = 1
 
 # p_07_cov_70/D_3/accuracy_mobster/N_15000_K_6_D_3
 
-csv_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/csv_mobster/")
+csv_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/csv_mobster_viber/")
 if (p == 1){
-  csv_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/csv_mobster/")
+  csv_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/csv_mobster_viber/")
 }
 if (!dir.exists(csv_path)) {
   dir.create(csv_path, recursive = TRUE)
 }
 
-accuracy_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/accuracy_mobster/")
+accuracy_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/accuracy_mobster_viber/")
 if (p == 1){
-  accuracy_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/accuracy_mobster/")
+  accuracy_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/accuracy_mobster_viber/")
 }
 if (!dir.exists(accuracy_path)) {
   dir.create(accuracy_path, recursive = TRUE)
 }
 
-NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/nmi_mobster/")
+NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/nmi_mobster_viber/")
 if (p == 1){
-  NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/nmi_mobster/")
+  NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/nmi_mobster_viber/")
 }
 if (!dir.exists(NMI_path)) {
   dir.create(NMI_path, recursive = TRUE)
 }
+
+NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/nmi_mobster_viber/")
+if (p == 1){
+  NMI_path = paste0("./results/p_", gsub("\\.", "", as.character(p)), "0_cov_", cov, "/D_", D, "/nmi_mobster_viber/")
+}
+if (!dir.exists(NMI_path)) {
+  dir.create(NMI_path, recursive = TRUE)
+}
+
 
 plot_path = paste0("./plots/p_", gsub("\\.", "", as.character(p)), "_cov_", cov, "/D_", D, "/fit_mobster/")
 if (p == 1){
@@ -69,6 +78,7 @@ if (!dir.exists(plot_viber_path)) {
 
 accuracy_values <- c()
 NMI_values <- c()
+NMI_values_complete <- c()
 
 for (idx in 0:14){
   # idx = 6
@@ -157,6 +167,7 @@ for (idx in 0:14){
     )
     
     pl = plot(fit$best)
+    # pl
     ggsave(paste0(plot_path, "N_", N, "_K_", K, "_D_", D, "_mobster_", idx, "_S", d, ".png"),plot = pl, dpi = 600, width = 8, height = 5)
     labels = fit$best$data
     vaf_with_labels <- merge(vaf, labels, by = c("original_index", "VAF", "NV", "DP", "true_dist"), all.x = TRUE)
@@ -172,10 +183,10 @@ for (idx in 0:14){
       final_df$original_index <- vaf_with_labels$original_index
     }
     
-    col = paste0("PredDist_S", d)
+    col = paste0("MPredDist_S", d)
     final_df[[col]] = vaf_with_labels$cluster
     
-    col = paste0("TypePredDist_S", d)
+    col = paste0("MTypePredDist_S", d)
     final_df[[col]] = vaf_with_labels$cluster_binary
     
     ### Now compute the accuracy for true_dist == 0
@@ -192,24 +203,28 @@ for (idx in 0:14){
     
   }
   
-  write.csv(final_df, paste0(csv_path, "N_", N, "_K_", K, "_D_", D, "_df_", idx, ".csv"), row.names = FALSE)
+  # write.csv(final_df, paste0(csv_path, "N_", N, "_K_", K, "_D_", D, "_df_", idx, ".csv"), row.names = FALSE)
   
   ### Now with the mutations where cluster != Tail, run VIBER on all the samples we have
   # Then compute NMI
   # Extract rows of final_df where all the columns PredDist_Sx are != Tail
   
-  # Identify columns starting with "PredDist_S"
-  pred_cols <- grep("^PredDist_S", names(final_df), value = TRUE)
+  # Identify columns starting with "MPredDist_S" (which contain MOBSTER labels)
+  pred_cols <- grep("^MPredDist_S", names(final_df), value = TRUE)
   rows_with_tail <- apply(final_df[, pred_cols], 1, function(row) any(row == "Tail", na.rm = TRUE))
   
-  # Step 2: Remove those rows
+  # col_MV = "MVPredDist"
+  # final_df[[col_MV]] = 0
+  
+  
+  # Remove those rows
   df_viber <- final_df[!rows_with_tail, ]
   
   # Create a logical vector where TRUE means the row has any "Tail" in PredDist columns
   # is_tail <- apply(final_df[pred_cols], 1, function(row) any(row == "Tail"))
   # df_viber <- final_df[!is_tail, ]
   
-  options(easypar.parallel = TRUE)
+  # options(easypar.parallel = TRUE)
   # # VIBER fit
   NVs = df_viber %>% select(starts_with('NV'))
   DPs = df_viber %>% select(starts_with('DP'))
@@ -228,8 +243,7 @@ for (idx in 0:14){
       nrow = 2)
     w = 15
     h = 10
-  }
-  else if (D == 3){
+  } else if (D == 3){
     pl_viber = ggarrange(
       plotlist = plot(
         viber_fit
@@ -238,8 +252,7 @@ for (idx in 0:14){
       nrow = 1)
     w = 15
     h = 5
-  }
-  else{
+  }else if (D == 2){
     pl_viber = ggarrange(
       plotlist = plot(
         viber_fit
@@ -253,11 +266,30 @@ for (idx in 0:14){
   ggsave(paste0(plot_viber_path, "N_", N, "_K_", K, "_D_", D, "_viber_", idx, ".png"),plot = pl_viber, dpi = 600, width = w, height = h)
   
   viber_labels <- viber_fit$labels$cluster.Binomial
-  viber_labels <- as.integer(sub("C", "", viber_labels)) - 1
+  viber_labels <- as.integer(sub("C", "", viber_labels))
+  if (length(unique(viber_labels)) == 1) {
+    viber_labels[1] <- 0
+  }
   # compute NMI between viber_fit$labels and df_viber$true_cluster
-  nmi = randnet::NMI(viber_labels, df_viber$true_cluster)
+  nmi = randnet::NMI(df_viber$true_cluster,viber_labels)
   NMI_values = c(NMI_values,nmi)
+  
+  # Here I need to create a final table with VIBER labels, and set to 0 mutations not included in VIBER, i.e. tail mutations
+  # Combine df_viber and viber_labels
+  df_viber_labeled <- df_viber %>%
+    mutate(MVPredDist = viber_labels)
+  
+  final_df <- final_df %>%
+    left_join(df_viber_labeled %>% select(original_index,MVPredDist), by = "original_index")
+    
+  final_df <- final_df %>%
+    mutate(MVPredDist = replace_na(MVPredDist, 0))
+  
+  nmi = randnet::NMI(final_df$true_cluster,final_df$MVPredDist)
+  NMI_values_complete = c(NMI_values_complete,nmi)
+  
+  write.csv(final_df, paste0(csv_path, "N_", N, "_K_", K, "_D_", D, "_df_", idx, ".csv"), row.names = FALSE)
 }
 
 write.csv(data.frame(accuracy = accuracy_values), paste0(accuracy_path, "N_", N, "_K_", K, "_D_", D, ".csv"), row.names = FALSE)
-write.csv(data.frame(NMI = NMI_values), paste0(NMI_path, "N_", N, "_K_", K, "_D_", D, ".csv"), row.names = FALSE)
+write.csv(data.frame(NMI = NMI_values_complete), paste0(NMI_path, "N_", N, "_K_", K, "_D_", D, ".csv"), row.names = FALSE)
