@@ -6,25 +6,15 @@ __pycache__/
 
 # Ignore
 plots/
-test_generative/old_tests_thesis/
-test_generative/new_model/saved_objects/
-test_generative/new_model/plots/
-test_generative/new_model/out_files/
-test_generative/new_model/results/
-test_generative/new_model_kmeans/saved_objects/
-test_generative/new_model_kmeans/plots/
-test_generative/new_model_kmeans/out_files/
-test_generative/new_model_kmeans/results/
+test_generative/pyclone_new/saved_objects/
+test_generative/pyclone_new/plots/
+test_generative/pyclone_new/out_files/
+test_generative/pyclone_new/results/
 
-test_generative/pyclone/saved_objects/
-test_generative/pyclone/plots/
-test_generative/pyclone/out_files/
-test_generative/pyclone/results/
-
-test_generative/final_our_model/saved_objects/
-test_generative/final_our_model/plots/
-test_generative/final_our_model/out_files/
-test_generative/final_our_model/results/
+test_generative/mobsterm_and_mobster/saved_objects/
+test_generative/mobsterm_and_mobster/plots/
+test_generative/mobsterm_and_mobster/out_files/
+test_generative/mobsterm_and_mobster/results/
 saved_objects/
 out_files/
 data/
