@@ -7,12 +7,9 @@ import json
 import time
 import matplotlib
 
-
-
 import torch
 from torch.distributions import constraints
 from pyro.infer.autoguide import AutoDelta
-from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.mixture import GaussianMixture
 import pandas as pd
 from itertools import combinations

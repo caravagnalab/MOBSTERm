@@ -18,10 +18,13 @@ test_generative/mobsterm_and_mobster/results/
 saved_objects/
 out_files/
 data/
+pyclone_hitchhikers/
 
 gbm_samples.txt
 run_gbm.py
 run_multiple_hitchhiker.py
+run_multiple_hitchhiker_pyclone.py
+test_pyclone.ipynb
 
 *.out
 ._*
