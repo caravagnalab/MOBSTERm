@@ -23,8 +23,10 @@ build/
 *.png
 *.pdf
 
-
 gbm_samples.txt
 run_gbm.py
 run_multiple_hitchhiker.py
 multiple_hitch_params.txt
+pyclone_hitchhikers/
+run_multiple_hitchhiker_pyclone.py
+test_pyclone.ipynb
