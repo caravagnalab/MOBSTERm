@@ -89,6 +89,7 @@ for (idx in 0:14){
   
   file_name = paste0(folder_name, "N_", N, "_K_", K, "_D_", D, "_df_", idx, ".csv")
   
+  # Take the data simulated for mobsterm
   df <- read.csv(file_name, stringsAsFactors = FALSE)
   
   parse_list_column <- function(x) {

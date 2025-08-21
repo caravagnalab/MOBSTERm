@@ -18,13 +18,13 @@ import argparse
 
 import sys
 import os
-from utils_functions import *
-import model_mobster_gmm as mobster_mv
+from utils_functions_mobsterm import *
+import mobsterm_model as mobster_mv
 
 # Set the parent directory
 parent_dir = "../../"
 sys.path.insert(0, parent_dir)
-# import new_model as mobster_mv
+
 from utils.BoundedPareto import BoundedPareto
 from utils.create_beta_pareto_dataset import *
 

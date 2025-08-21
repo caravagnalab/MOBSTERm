@@ -142,18 +142,8 @@ if __name__ == "__main__":
         "ref_counts": "DP", "cluster_id": "Pred_cluster",
         "cellular_prevalence": "Pred_phi"}, inplace=True)
         
-        # NOW THIS FINAL RESULT SORTED IS THE ONE I CAN USE TO SAVE THE CSV
-        # I need to add the true cluster assignment, the true center phi and the true distribution type
-        
         # ------------------ #
         
-        # column_names = ['NV', 'DP', 'True_cluster', 'Pred_cluster', 
-        #     'True_distribution', 'Pred_distribution', 'True_phi', 'Pred_phi', 
-        #     'True_kappa', 'Pred_kappa', 'True_alpha', 'Pred_alpha']
-        # df = pd.DataFrame(columns=column_names)
-
-        # df['NV'] = [[round(val, 3) for val in row.tolist()] for row in NV]
-        # df['DP'] = [[round(val, 3) for val in row.tolist()] for row in DP]
         result_sorted['True_cluster'] = cluster_labels.tolist()  # No rounding needed, they are integer labels
         result_sorted['True_distribution'] = [[round(val, 3) for val in row.tolist()] for row in type_labels_data]
         result_sorted['True_phi'] = [[round(val, 3) for val in row.tolist()] for row in phi_param_data]
