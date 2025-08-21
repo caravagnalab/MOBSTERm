@@ -19,7 +19,9 @@ from collections import defaultdict
 from pandas.core.common import flatten
 from .plot_functions import *
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [], 
+        purity=None, kr = None, seed=[123,1234], par_threshold = 0.005, 
+        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -36,7 +38,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, s
         if curr_k != 0:
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, kr = kr,
+                curr_mb.append(mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity, kr = kr,
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
@@ -58,7 +60,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, s
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, purity=None, kr = None, seed=1234, 
+    def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None, kr = None, seed=1234, 
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
@@ -106,6 +108,11 @@ class mobster_MV():
             else:
                 self.kr = ['1:1']*NV.shape[1]
             self.set_prior_parameters()
+
+            if mut_id is not None:
+                if not isinstance(mut_id, list): # if it is not a list
+                    mut_id = list(mut_id)
+                self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
 
     def compute_kmeans_centers(self):
         best_bic = float('inf')
