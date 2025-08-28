@@ -769,16 +769,18 @@ class mobster_MV():
 
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         
+        self.params = {k: v.detach().cpu().numpy() for k, v in self.params.items()}
+
         self.final_dict = {
-        "NV": self.NV,
-        "DP": self.DP,
+        "NV": self.NV.numpy(),
+        "DP": self.DP.numpy(),
         "mutation_id": self.mut_id,
         "model_parameters" : self.params,
-        "pareto_L": self.pareto_L,
-        "cluster_id": self.cluster_assignments,
+        "pareto_L": self.pareto_L.numpy(),
+        "cluster_id": self.cluster_assignments.numpy(),
         "bic": bic,
         "icl": icl,
-        "final_likelihood": self.log_sum_exp(final_lk).sum(), 
+        "final_likelihood": self.log_sum_exp(final_lk).sum().detach().numpy(), 
         "final_loss": self.losses[-1],
         "likelihood_per_step": self.lks,
         "loss_per_step": self.losses,

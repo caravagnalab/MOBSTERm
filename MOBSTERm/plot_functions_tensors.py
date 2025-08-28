@@ -21,7 +21,7 @@ colors = [
     ]
 
 def plot_deltas(mb, savefig = False, data_folder = None):
-    deltas = mb['model_parameters']["delta_param"]
+    deltas = mb['model_parameters']["delta_param"].detach().numpy()
     K = deltas.shape[0]
     if deltas.shape[0] == 1:
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(5, 1.5))
@@ -74,7 +74,7 @@ def plot_deltas(mb, savefig = False, data_folder = None):
 
 def plot_responsib(mb, savefig = False, data_folder = None):
     if torch.is_tensor(mb['model_parameters']['responsib']):
-        resp = mb['model_parameters']['responsib']
+        resp = mb['model_parameters']['responsib'].detach().numpy()
     else:
         resp = np.array(mb['model_parameters']['responsib'])
     
@@ -95,7 +95,7 @@ def plot_paretos(mb, savefig = False, data_folder = None):
         probs_pareto = mb['model_parameters']["probs_pareto_param"]
 
     if torch.is_tensor(mb['model_parameters']['alpha_pareto_param']):
-        alpha_pareto = mb['model_parameters']["alpha_pareto_param"]
+        alpha_pareto = mb['model_parameters']["alpha_pareto_param"].detach().numpy()
     else:
         alpha_pareto = np.array(mb['model_parameters']["alpha_pareto_param"])
 
@@ -122,8 +122,8 @@ def plot_paretos(mb, savefig = False, data_folder = None):
     plt.close()
 
 def plot_betas(mb, savefig = False, data_folder = None):
-    phi_beta = mb['model_parameters']["phi_beta_param"]
-    kappa_beta = mb['model_parameters']["k_beta_param"]
+    phi_beta = mb['model_parameters']["phi_beta_param"].detach().numpy()
+    kappa_beta = mb['model_parameters']["k_beta_param"].detach().numpy()
     if phi_beta.shape[0] == 1:
         fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (7,3))
         ax = np.array([ax])
@@ -152,31 +152,31 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
     delta = mb['model_parameters']["delta_param"]  # K x D x 2
     phi_beta = mb['model_parameters']["phi_beta_param"]
     if torch.is_tensor(phi_beta):
-        phi_beta = phi_beta
+        phi_beta = phi_beta.detach().numpy()
     else:
         phi_beta = np.array(phi_beta)
     
     kappa_beta = mb['model_parameters']["k_beta_param"]
     if torch.is_tensor(kappa_beta):
-        kappa_beta = kappa_beta
+        kappa_beta = kappa_beta.detach().numpy()
     else:
         kappa_beta = np.array(kappa_beta)
 
     alpha = mb['model_parameters']["alpha_pareto_param"]
     if torch.is_tensor(alpha):
-        alpha = alpha
+        alpha = alpha.detach().numpy()
     else:
         alpha = np.array(alpha)
     
     weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
-        weights = weights
+        weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
     labels = mb['cluster_id']
     if torch.is_tensor(labels):
-        labels = labels
+        labels = labels.detach().numpy()
     else:
         labels = np.array(labels)
 
@@ -204,7 +204,7 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
     for k in range(mb['used_components']):
         for d in range(mb['NV'].shape[1]):
             delta_kd = delta[k, d]
-            maxx = np.argmax(delta_kd)
+            maxx = torch.argmax(delta_kd)
             if maxx == 1:
                 # plot beta
                 a = phi_beta[k,d] * kappa_beta[k,d]
@@ -224,7 +224,7 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
                 axes[k,d].legend()
 
             if torch.is_tensor(mb['NV']):
-                data = mb['NV'][:,d]/mb['DP'][:,d]
+                data = mb['NV'][:,d].numpy()/mb['DP'][:,d].numpy()
             else:
                 data = np.array(mb['NV'][:,d])/np.array(mb['DP'][:,d])
             # for i in np.unique(labels):
@@ -254,31 +254,31 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
     delta = mb['model_parameters']["delta_param"]  # K x D x 2
     phi_beta = mb['model_parameters']["phi_beta_param"]
     if torch.is_tensor(phi_beta):
-        phi_beta = phi_beta
+        phi_beta = phi_beta.detach().numpy()
     else:
         phi_beta = np.array(phi_beta)
     
     kappa_beta = mb['model_parameters']["k_beta_param"]
     if torch.is_tensor(kappa_beta):
-        kappa_beta = kappa_beta
+        kappa_beta = kappa_beta.detach().numpy()
     else:
         kappa_beta = np.array(kappa_beta)
 
     alpha = mb['model_parameters']["alpha_pareto_param"]
     if torch.is_tensor(alpha):
-        alpha = alpha
+        alpha = alpha.detach().numpy()
     else:
         alpha = np.array(alpha)
     
     weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
-        weights = weights
+        weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
     labels = mb['cluster_id']
     if torch.is_tensor(labels):
-        labels = labels
+        labels = labels.detach().numpy()
     else:
         labels = np.array(labels)
 
@@ -325,7 +325,7 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
             axes[k].legend()
 
         if torch.is_tensor(mb['NV']):
-            data = mb['NV'][:]/mb['DP'][:]
+            data = mb['NV'][:].numpy()/mb['DP'][:].numpy()
         else:
             data = np.array(mb['NV'][:])/np.array(mb['DP'][:])
         # for i in np.unique(labels):
@@ -360,7 +360,7 @@ def plot_marginals_single(mb):
 def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
-        weights = weights
+        weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
@@ -433,9 +433,9 @@ def plot_marginals_inference_nd(mb, D, savefig= False):
     vaf = (mb['NV'] / mb['DP'])#/purity
     
     columns=[f"Sample {d+1}" for d in range(D)]
-    df = pd.DataFrame(vaf, columns=columns)
+    df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
-    labels = mb['cluster_id']
+    labels = mb['cluster_id'].detach().numpy()
     df['Label'] = labels
     df['mutation_id'] = mutation_ids
 
@@ -481,9 +481,9 @@ def plot_marginals_inference_1d(mb, D, savefig=False):
     vaf = (mb['NV'] / mb['DP'])
 
     columns=[f"Sample {d+1}" for d in range(D)]
-    df = pd.DataFrame(vaf, columns=columns)
+    df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
-    labels = mb['cluster_id']
+    labels = mb['cluster_id'].detach().numpy()
     df['Label'] = labels
     df['Label'] = df['Label'].astype(str)
     df['mutation_id'] = mutation_ids
@@ -534,9 +534,9 @@ def plot_scatter_inference(mb, savefig=False):
     vaf = (mb['NV'] / mb['DP'])
     
     columns=[f"Sample {d+1}" for d in range(D)]
-    df = pd.DataFrame(vaf, columns=columns)
+    df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
-    labels = mb['cluster_id']
+    labels = mb['cluster_id'].detach().numpy()
     df['Cluster'] = labels
     df['mutation_id'] = mutation_ids
     # print(df)
