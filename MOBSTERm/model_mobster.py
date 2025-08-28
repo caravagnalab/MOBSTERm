@@ -33,30 +33,34 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
     
     for curr_k in K:
         j = 0
-        curr_mb = []
+        curr_mb = [] # contains the objects
         min_bic_seed = torch.tensor(float('inf'))
         if curr_k != 0:
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                curr_mb.append(mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity, kr = kr,
+                mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity, kr = kr,
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
-                                            data_folder = data_folder))
-                curr_mb[j].run_inference(num_iter, lr)
-                
-                if curr_mb[j].final_dict['icl'] <= min_bic_seed:
-                    min_bic_seed = curr_mb[j].final_dict['icl']
+                                            data_folder = data_folder)
+                mb.run_inference(num_iter, lr)
+                curr_mb.append(mb.final_dict)
+
+                if curr_mb[j]['icl'] <= min_bic_seed:
+                    min_bic_seed = curr_mb[j]['icl']
                     mb_best_seed = curr_mb[j]
                 j+=1
             mb_list.append(mb_best_seed)
-            if mb_best_seed.final_dict['icl'] <= min_bic:
-                min_bic = mb_best_seed.final_dict['icl']
-                best_K = mb_best_seed.K
-                best_total_seed = mb_best_seed.seed
+            if mb_best_seed['icl'] <= min_bic:
+                min_bic = mb_best_seed['icl']
+                best_K = mb_best_seed['n_components']
+                best_total_seed = mb_best_seed['seed']
                 mb_final = mb_best_seed
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
-    
-    return mb_final, mb_list
+    mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
+    return {
+        "best_fit": mb_final,
+        "runs": mb_list_ordered # mb_list contains the best seed for each K
+    }
 
 
 class mobster_MV():
@@ -766,11 +770,21 @@ class mobster_MV():
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         
         self.final_dict = {
+        "NV": self.NV,
+        "DP": self.DP,
+        "mutation_id": self.mut_id,
         "model_parameters" : self.params,
+        "cluster_id": self.cluster_assignments,
         "bic": bic,
         "icl": icl,
         "final_likelihood": self.log_sum_exp(final_lk).sum(), 
-        "final_loss": self.losses[-1]
+        "final_loss": self.losses[-1],
+        "likelihood_per_step": self.lks,
+        "loss_per_step": self.losses,
+        "gradient_norms": gradient_norms,
+        "n_components": self.K,
+        "used_components": self.final_K,
+        "seed": self.seed
         }
 
 
@@ -803,11 +817,11 @@ class mobster_MV():
             lks_k = lks[k] # take row k -> array of size len(NV)
             res[k] = torch.exp(lks_k - norm_fact)
         self.params["responsib"] = res
-        self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
+        self.cluster_assignments = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
         
         
         # Find empty components and remove them
-        counts = torch.bincount(self.params["cluster_assignments"], minlength=self.K)  # Shape: (K,)
+        counts = torch.bincount(self.cluster_assignments, minlength=self.K)  # Shape: (K,)
         empty_components = torch.where(counts == 0)[0]  # Indices of empty components
         
 
@@ -822,7 +836,7 @@ class mobster_MV():
             self.params["responsib"] = self.params["responsib"][mask]
             
             # Recompute cluster assignments with updated responsibilities
-            self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim=0)
+            self.cluster_assignments = torch.argmax(self.params["responsib"], dim=0)
             for key, _ in self.params.items():
                 if key in keys and isinstance(self.params[key], torch.Tensor) and self.params[key].shape[0] == self.K:
                     self.params[key] = self.params[key][mask]  # Keep only non-empty rows

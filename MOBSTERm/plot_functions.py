@@ -172,7 +172,7 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
     else:
         weights = np.array(weights)
         
-    labels = mb.params['cluster_assignments']
+    labels = mb.cluster_assignments
     if torch.is_tensor(labels):
         labels = labels.detach().numpy()
     else:
@@ -272,7 +272,7 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
     else:
         weights = np.array(weights)
         
-    labels = mb.params['cluster_assignments']
+    labels = mb.cluster_assignments
     if torch.is_tensor(labels):
         labels = labels.detach().numpy()
     else:
@@ -360,7 +360,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     else:
         weights = np.array(weights)
         
-    labels = mb.params["cluster_assignments"]
+    labels = mb.cluster_assignments
     if not torch.is_tensor(labels):
         labels = torch.tensor(labels)
 
@@ -431,7 +431,7 @@ def plot_marginals_inference_nd(mb, D):
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.params["cluster_assignments"].detach().numpy()
+    labels = mb.cluster_assignments.detach().numpy()
     df['Label'] = labels
     df['mutation_id'] = mutation_ids
 
@@ -479,7 +479,7 @@ def plot_marginals_inference_1d(mb, D):
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.params["cluster_assignments"].detach().numpy()
+    labels = mb.cluster_assignments.detach().numpy()
     df['Label'] = labels
     df['Label'] = df['Label'].astype(str)
     df['mutation_id'] = mutation_ids
@@ -532,7 +532,7 @@ def plot_scatter_inference(mb):
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.params["cluster_assignments"].detach().numpy()
+    labels = mb.cluster_assignments.detach().numpy()
     df['Cluster'] = labels
     df['mutation_id'] = mutation_ids
     # print(df)
