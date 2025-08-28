@@ -21,7 +21,7 @@ colors = [
     ]
 
 def plot_deltas(mb, savefig = False, data_folder = None):
-    deltas = mb.params["delta_param"].detach().numpy()
+    deltas = mb['model_parameters']["delta_param"].detach().numpy()
     K = deltas.shape[0]
     if deltas.shape[0] == 1:
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(5, 1.5))
@@ -29,7 +29,7 @@ def plot_deltas(mb, savefig = False, data_folder = None):
     else:
         fig, ax = plt.subplots(nrows=deltas.shape[0], ncols=1, figsize=(5, K * 0.6))
 
-    plt.suptitle(f"Delta with K={mb.K}, seed={mb.seed}", fontsize=12, y=0.98)
+    plt.suptitle(f"Delta with K={mb['n_components']}, seed={mb['seed']}", fontsize=12, y=0.98)
 
     fig.subplots_adjust(top=0.93, hspace=0.2, right=0.8)
 
@@ -66,45 +66,45 @@ def plot_deltas(mb, savefig = False, data_folder = None):
     cbar_ax = fig.add_axes([0.85, 0.2, 0.02, 0.6])  # [left, bottom, width, height]
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, cax=cbar_ax)
-    seed = mb.seed
+    seed = mb['seed']
     if savefig:
-        plt.savefig(f"plots/{data_folder}/deltas_K_{mb.K}_seed_{seed}.png")
+        plt.savefig(f"plots/{data_folder}/deltas_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
 def plot_responsib(mb, savefig = False, data_folder = None):
-    if torch.is_tensor(mb.params['responsib']):
-        resp = mb.params['responsib'].detach().numpy()
+    if torch.is_tensor(mb['model_parameters']['responsib']):
+        resp = mb['model_parameters']['responsib'].detach().numpy()
     else:
-        resp = np.array(mb.params['responsib'])
+        resp = np.array(mb['model_parameters']['responsib'])
     
     fig, ax = plt.subplots(nrows=1, ncols=1)
-    plt.suptitle(f"Responsibilities with K={mb.K}, seed={mb.seed}", fontsize = 14)
+    plt.suptitle(f"Responsibilities with K={mb['n_components']}, seed={mb['seed']}", fontsize = 14)
     fig.tight_layout()
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
-    seed = mb.seed
+    seed = mb['seed']
     if savefig:
-        plt.savefig(f"plots/{data_folder}/responsibilities_K_{mb.K}_seed_{seed}.png")
+        plt.savefig(f"plots/{data_folder}/responsibilities_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
 def plot_paretos(mb, savefig = False, data_folder = None):
     check = False
-    check = "probs_pareto_param" in mb.params.keys()
+    check = "probs_pareto_param" in mb['model_parameters'].keys()
     if check:
-        probs_pareto = mb.params["probs_pareto_param"]
+        probs_pareto = mb['model_parameters']["probs_pareto_param"]
 
-    if torch.is_tensor(mb.params['alpha_pareto_param']):
-        alpha_pareto = mb.params["alpha_pareto_param"].detach().numpy()
+    if torch.is_tensor(mb['model_parameters']['alpha_pareto_param']):
+        alpha_pareto = mb['model_parameters']["alpha_pareto_param"].detach().numpy()
     else:
-        alpha_pareto = np.array(mb.params["alpha_pareto_param"])
+        alpha_pareto = np.array(mb['model_parameters']["alpha_pareto_param"])
 
     if alpha_pareto.shape[0] == 1:
         fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (18,mb.final_K*1))      
-    plt.suptitle(f"Pareto with K={mb.K}, seed={mb.seed}", fontsize=14)
+        fig, ax = plt.subplots(nrows=alpha_pareto.shape[0], ncols=alpha_pareto.shape[1], figsize = (18,mb['used_components']*1))      
+    plt.suptitle(f"Pareto with K={mb['n_components']}, seed={mb['seed']}", fontsize=14)
     fig.tight_layout()
     x = np.arange(0,0.5,0.001)
     for k in range(alpha_pareto.shape[0]):
@@ -115,21 +115,21 @@ def plot_paretos(mb, savefig = False, data_folder = None):
                 ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}, p {round(float(probs_pareto[k,d]), ndigits=2)}", fontsize=10)
             else:
                 ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
-    seed = mb.seed
+    seed = mb['seed']
     if savefig:
-        plt.savefig(f"plots/{data_folder}/paretos_K_{mb.K}_seed_{seed}.png")
+        plt.savefig(f"plots/{data_folder}/paretos_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
 def plot_betas(mb, savefig = False, data_folder = None):
-    phi_beta = mb.params["phi_beta_param"].detach().numpy()
-    kappa_beta = mb.params["k_beta_param"].detach().numpy()
+    phi_beta = mb['model_parameters']["phi_beta_param"].detach().numpy()
+    kappa_beta = mb['model_parameters']["k_beta_param"].detach().numpy()
     if phi_beta.shape[0] == 1:
         fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (7,3))
         ax = np.array([ax])
     else:
-        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (18,mb.final_K*1))   
-    plt.suptitle(f"Beta with K={mb.K}, seed={mb.seed}", fontsize=14)
+        fig, ax = plt.subplots(nrows=phi_beta.shape[0], ncols=phi_beta.shape[1], figsize = (18,mb['used_components']*1))   
+    plt.suptitle(f"Beta with K={mb['n_components']}, seed={mb['seed']}", fontsize=14)
     fig.tight_layout()
     x = np.arange(0,1,0.001)
     for k in range(phi_beta.shape[0]):
@@ -139,40 +139,42 @@ def plot_betas(mb, savefig = False, data_folder = None):
             pdf = beta.pdf(x, a, b)
             ax[k,d].plot(x, pdf, 'r-', lw=1)
             ax[k,d].set_title(f"Sample {d+1} Cluster {k} - phi {round(float(phi_beta[k,d]), ndigits=2)}, kappa {round(float(kappa_beta[k,d]), ndigits=2)}", fontsize=10)
-    seed = mb.seed
+    seed = mb['seed']
 
     if savefig:
-        plt.savefig(f"plots/{data_folder}/betas_K_{mb.K}_seed_{seed}.png")
+        plt.savefig(f"plots/{data_folder}/betas_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
 def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
-    delta = mb.params["delta_param"]  # K x D x 2
-    phi_beta = mb.params["phi_beta_param"]
+    a_beta_zeros = torch.tensor(1e-4)
+    b_beta_zeros = torch.tensor(1e4)
+    delta = mb['model_parameters']["delta_param"]  # K x D x 2
+    phi_beta = mb['model_parameters']["phi_beta_param"]
     if torch.is_tensor(phi_beta):
         phi_beta = phi_beta.detach().numpy()
     else:
         phi_beta = np.array(phi_beta)
     
-    kappa_beta = mb.params["k_beta_param"]
+    kappa_beta = mb['model_parameters']["k_beta_param"]
     if torch.is_tensor(kappa_beta):
         kappa_beta = kappa_beta.detach().numpy()
     else:
         kappa_beta = np.array(kappa_beta)
 
-    alpha = mb.params["alpha_pareto_param"]
+    alpha = mb['model_parameters']["alpha_pareto_param"]
     if torch.is_tensor(alpha):
         alpha = alpha.detach().numpy()
     else:
         alpha = np.array(alpha)
     
-    weights = mb.params["weights_param"]
+    weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
         weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
-    labels = mb.cluster_assignments
+    labels = mb['cluster_id']
     if torch.is_tensor(labels):
         labels = labels.detach().numpy()
     else:
@@ -181,26 +183,26 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
     # For each sample I want to plot all the clusters separately.
     # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
     # For each cluster, we want to plot the histogram of the data assigned to that cluster
-    if mb.final_K == 1:
-        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(10, 4))
+    if mb['used_components'] == 1:
+        fig, axes = plt.subplots(mb['used_components'], mb['NV'].shape[1], figsize=(10, 4))
     else:
-        fig, axes = plt.subplots(mb.final_K, mb.NV.shape[1], figsize=(10, mb.final_K*3))
-    if mb.final_K == 1:
+        fig, axes = plt.subplots(mb['used_components'], mb['NV'].shape[1], figsize=(10, mb['used_components']*3))
+    if mb['used_components'] == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
-    plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
+    plt.suptitle(f"Marginals with K={mb['n_components']}, seed={mb['seed']}",fontsize=14)
     x = np.linspace(0.001, 1, 1000)
 
     unique_labels = np.unique(labels)
 
     # color_mapping = colors[:len(unique_labels)]
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         color_mapping = colors
     else:
         color_mapping = colors[:len(unique_labels)]
     # cmap = cm.get_cmap('tab20')
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
-    for k in range(mb.final_K):
-        for d in range(mb.NV.shape[1]):
+    for k in range(mb['used_components']):
+        for d in range(mb['NV'].shape[1]):
             delta_kd = delta[k, d]
             maxx = torch.argmax(delta_kd)
             if maxx == 1:
@@ -212,19 +214,19 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
                 axes[k,d].legend()
             elif maxx == 0:
                 # plot pareto
-                pdf = pareto.pdf(x, alpha[k,d], scale=mb.pareto_L) #* weights[k]
+                pdf = pareto.pdf(x, alpha[k,d], scale=mb['pareto_L']) #* weights[k]
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
                 axes[k,d].legend()
             else:
                 # private
-                pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
+                pdf = beta.pdf(x, a_beta_zeros, b_beta_zeros) # delta_approx
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
                 axes[k,d].legend()
 
-            if torch.is_tensor(mb.NV):
-                data = mb.NV[:,d].numpy()/mb.DP[:,d].numpy()
+            if torch.is_tensor(mb['NV']):
+                data = mb['NV'][:,d].numpy()/mb['DP'][:,d].numpy()
             else:
-                data = np.array(mb.NV[:,d])/np.array(mb.DP[:,d])
+                data = np.array(mb['NV'][:,d])/np.array(mb['DP'][:,d])
             # for i in np.unique(labels):
             if k in unique_labels:
                 if maxx == 2:
@@ -241,38 +243,40 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
             axes[k,d].set_xlim([-0.01,0.7])
             plt.tight_layout()
     if savefig:
-        plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
+        plt.savefig(f"plots/{data_folder}/marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
 
 def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
-    delta = mb.params["delta_param"]  # K x D x 2
-    phi_beta = mb.params["phi_beta_param"]
+    a_beta_zeros = torch.tensor(1e-4)
+    b_beta_zeros = torch.tensor(1e4)
+    delta = mb['model_parameters']["delta_param"]  # K x D x 2
+    phi_beta = mb['model_parameters']["phi_beta_param"]
     if torch.is_tensor(phi_beta):
         phi_beta = phi_beta.detach().numpy()
     else:
         phi_beta = np.array(phi_beta)
     
-    kappa_beta = mb.params["k_beta_param"]
+    kappa_beta = mb['model_parameters']["k_beta_param"]
     if torch.is_tensor(kappa_beta):
         kappa_beta = kappa_beta.detach().numpy()
     else:
         kappa_beta = np.array(kappa_beta)
 
-    alpha = mb.params["alpha_pareto_param"]
+    alpha = mb['model_parameters']["alpha_pareto_param"]
     if torch.is_tensor(alpha):
         alpha = alpha.detach().numpy()
     else:
         alpha = np.array(alpha)
     
-    weights = mb.params["weights_param"]
+    weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
         weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
-    labels = mb.cluster_assignments
+    labels = mb['cluster_id']
     if torch.is_tensor(labels):
         labels = labels.detach().numpy()
     else:
@@ -281,25 +285,25 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
     # For each sample I want to plot all the clusters separately.
     # For each cluster, we need to plot the density corresponding to the beta or the pareto based on the value of delta
     # For each cluster, we want to plot the histogram of the data assigned to that cluster
-    if mb.final_K == 1:
-        fig, axes = plt.subplots(mb.final_K, 1, figsize=(10, 4))
+    if mb['used_components'] == 1:
+        fig, axes = plt.subplots(mb['used_components'], 1, figsize=(10, 4))
     else:
-        fig, axes = plt.subplots(mb.final_K, 1, figsize=(10, mb.final_K*3))
-    if mb.final_K == 1:
+        fig, axes = plt.subplots(mb['used_components'], 1, figsize=(10, mb['used_components']*3))
+    if mb['used_components'] == 1:
         axes = ax = np.array([axes])  # add an extra dimension to make it 2D
-    plt.suptitle(f"Marginals with K={mb.K}, seed={mb.seed}",fontsize=14)
+    plt.suptitle(f"Marginals with K={mb['n_components']}, seed={mb['seed']}",fontsize=14)
     x = np.linspace(0.001, 1, 1000)
 
     unique_labels = np.unique(labels)
 
     # color_mapping = colors[:len(unique_labels)]
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         color_mapping = colors
     else:
         color_mapping = colors[:len(unique_labels)]
     # cmap = cm.get_cmap('tab20')
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
-    for k in range(mb.final_K):
+    for k in range(mb['used_components']):
         delta_kd = delta[k]
         maxx = torch.argmax(delta_kd)
         if maxx == 1:
@@ -311,19 +315,19 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
             axes[k].legend()
         elif maxx == 0:
             # plot pareto
-            pdf = pareto.pdf(x, alpha[k], scale=mb.pareto_L) #* weights[k]
+            pdf = pareto.pdf(x, alpha[k], scale=mb['pareto_L']) #* weights[k]
             axes[k].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
             axes[k].legend()
         else:
             # private
-            pdf = beta.pdf(x, mb.a_beta_zeros, mb.b_beta_zeros) # delta_approx
+            pdf = beta.pdf(x, a_beta_zeros, b_beta_zeros) # delta_approx
             axes[k].plot(x, pdf, linewidth=1.5, label='Dirac', color='b')
             axes[k].legend()
 
-        if torch.is_tensor(mb.NV):
-            data = mb.NV[:].numpy()/mb.DP[:].numpy()
+        if torch.is_tensor(mb['NV']):
+            data = mb['NV'][:].numpy()/mb['DP'][:].numpy()
         else:
-            data = np.array(mb.NV[:])/np.array(mb.DP[:])
+            data = np.array(mb['NV'][:])/np.array(mb['DP'][:])
         # for i in np.unique(labels):
         if k in unique_labels:
             if maxx == 2:
@@ -340,13 +344,13 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
         axes[k].set_xlim([-0.01,0.7])
         plt.tight_layout()
     if savefig:
-        plt.savefig(f"plots/{data_folder}/marginals_K_{mb.K}_seed_{mb.seed}.png")
+        plt.savefig(f"plots/{data_folder}/marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
 
 def plot_marginals_single(mb):
-    D = mb.NV.shape[1]
+    D = mb['NV'].shape[1]
     if D == 1:
         plot_marginals_single_1d(mb)
     else:
@@ -354,13 +358,13 @@ def plot_marginals_single(mb):
        
 
 def plot_mixing_proportions(mb, savefig=False, data_folder=None):
-    weights = mb.params["weights_param"]
+    weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
         weights = weights.detach().numpy()
     else:
         weights = np.array(weights)
         
-    labels = mb.cluster_assignments
+    labels = mb['cluster_id']
     if not torch.is_tensor(labels):
         labels = torch.tensor(labels)
 
@@ -371,7 +375,7 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     
     color_mapping = colors[:len(unique_labels)]
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         color_mapping = colors
     else:
         color_mapping = colors[:len(unique_labels)]
@@ -419,19 +423,19 @@ def plot_mixing_proportions(mb, savefig=False, data_folder=None):
     plt.tight_layout()
 
     if savefig:
-        plt.savefig(f"plots/{data_folder}/mixing_proportions_{mb.K}_seed_{mb.seed}.png")
+        plt.savefig(f"plots/{data_folder}/mixing_proportions_{mb['n_components']}_seed_{mb['seed']}.png")
     else:
         plt.show()
     plt.close()
 
-def plot_marginals_inference_nd(mb, D):
+def plot_marginals_inference_nd(mb, D, savefig= False):
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
-    vaf = (mb.NV / mb.DP)#/purity
+    vaf = (mb['NV'] / mb['DP'])#/purity
     
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
-    mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.cluster_assignments.detach().numpy()
+    mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
+    labels = mb['cluster_id'].detach().numpy()
     df['Label'] = labels
     df['mutation_id'] = mutation_ids
 
@@ -441,7 +445,7 @@ def plot_marginals_inference_nd(mb, D):
     unique_labels = sorted(df['Label'].unique())  # Ensures fixed order
 
     palette = colors[:len(unique_labels)]
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         palette = colors
     else:
         palette = colors[:len(unique_labels)]
@@ -468,18 +472,18 @@ def plot_marginals_inference_nd(mb, D):
     plt.subplots_adjust(wspace=0.3, hspace=0.3)
     
     plt.tight_layout()
-    if mb.savefig:
-        plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb.K}_seed_{mb.seed}.png")
+    if savefig:
+        plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
-def plot_marginals_inference_1d(mb, D):
-    vaf = (mb.NV / mb.DP)
+def plot_marginals_inference_1d(mb, D, savefig=False):
+    vaf = (mb['NV'] / mb['DP'])
 
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
-    mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.cluster_assignments.detach().numpy()
+    mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
+    labels = mb['cluster_id'].detach().numpy()
     df['Label'] = labels
     df['Label'] = df['Label'].astype(str)
     df['mutation_id'] = mutation_ids
@@ -489,7 +493,7 @@ def plot_marginals_inference_1d(mb, D):
 
     palette = colors[:len(unique_labels)]
     
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         palette = colors
     else:
         palette = colors[:len(unique_labels)]
@@ -509,30 +513,30 @@ def plot_marginals_inference_1d(mb, D):
     plt.subplots_adjust(wspace=0.3, hspace=0.3)
     
     plt.tight_layout()
-    if mb.savefig:
-        plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb.K}_seed_{mb.seed}.png")
+    if savefig:
+        plt.savefig(f"plots/{mb.data_folder}/inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
 def plot_marginals_inference(mb):
-    D = mb.NV.shape[1]
+    D = mb['NV'].shape[1]
     if D == 1:
         plot_marginals_inference_1d(mb, D)
     else:
         plot_marginals_inference_nd(mb, D)
         
-def plot_scatter_inference(mb):
+def plot_scatter_inference(mb, savefig=False):
     """
     Plot the results.
     """
-    D = mb.NV.shape[1]
+    D = mb['NV'].shape[1]
     pairs = np.triu_indices(D, k=1)
-    vaf = (mb.NV / mb.DP)
+    vaf = (mb['NV'] / mb['DP'])
     
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf.numpy(), columns=columns)
-    mutation_ids = [f"M{i}" for i in range(mb.NV.shape[0])]
-    labels = mb.cluster_assignments.detach().numpy()
+    mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
+    labels = mb['cluster_id'].detach().numpy()
     df['Cluster'] = labels
     df['mutation_id'] = mutation_ids
     # print(df)
@@ -541,7 +545,7 @@ def plot_scatter_inference(mb):
     pairs = list(combinations(columns, 2))  # Unique pairs of samples
     
     palette = colors[:len(unique_labels)]
-    if mb.final_K == mb.K:
+    if mb['used_components'] == mb['n_components']:
         palette = colors
     else:
         palette = colors[:len(unique_labels)]
@@ -580,8 +584,8 @@ def plot_scatter_inference(mb):
             ax.axis('off')
 
         plt.tight_layout()
-    if mb.savefig:
-        plt.savefig(f"plots/{mb.data_folder}/inference_K_{mb.K}_seed_{mb.seed}.png")
+    if savefig:
+        plt.savefig(f"plots/{mb.data_folder}/inference_K_{mb['n_components']}_seed_{mb['seed']}.png")
 
     plt.show()
     plt.close()

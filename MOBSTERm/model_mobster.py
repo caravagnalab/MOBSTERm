@@ -774,6 +774,7 @@ class mobster_MV():
         "DP": self.DP,
         "mutation_id": self.mut_id,
         "model_parameters" : self.params,
+        "pareto_L": self.pareto_L,
         "cluster_id": self.cluster_assignments,
         "bic": bic,
         "icl": icl,
