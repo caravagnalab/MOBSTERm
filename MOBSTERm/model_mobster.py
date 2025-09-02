@@ -656,11 +656,11 @@ class mobster_MV():
     def compute_BIC(self, params, final_lk):
         # final_lk: K x N
         n_params = self.calculate_number_of_params(params)
-        print("n_params: ", n_params)
+        # print("n_params: ", n_params)
         n = torch.tensor(self.NV.shape[0])
-        print("n: ", n)
+        # print("n: ", n)
         lk = self.log_sum_exp(final_lk).sum()
-        print("lk: ", lk)
+        # print("lk: ", lk)
         return torch.log(n) * n_params - torch.tensor(2.) * lk
 
 
@@ -765,13 +765,13 @@ class mobster_MV():
         # self.plot_grad_norms(gradient_norms)
         
         final_lk = self.compute_posteriors()
-        print("Inference lk: ", self.lks[-1])
-        print("Final lk: ", self.log_sum_exp(final_lk).sum())
+        # print("Inference lk: ", self.lks[-1])
+        # print("Final lk: ", self.log_sum_exp(final_lk).sum())
 
         bic = self.compute_BIC(self.params, final_lk)
-        print(f"bic: {bic} \n")
         icl = self.compute_ICL(self.params, bic)
-
+        print(f"ICL: {icl} \n")
+        
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         
         self.params = {k: v.detach().cpu().numpy() for k, v in self.params.items()}

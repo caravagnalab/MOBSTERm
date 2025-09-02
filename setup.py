@@ -5,7 +5,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
 setup(name='MOBSTERm',
-      version='0.1.2',
+      version='0.1.3',
       description='Pyro model to perform multivariate subclonal deconvolution',
       url='https://github.com/caravagnalab/MOBSTERm',
       author='Elena Rivaroli',
