@@ -20,8 +20,8 @@ from pandas.core.common import flatten
 from .plot_functions import *
 
 def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [], 
-        purity=None, kr = None, seed=[123,1234], par_threshold = 0.005, 
-        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+        purity=None, kr = None, seed_list=[123,1234], par_threshold = 0.005, 
+        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None, sample_names =  None):
     """
     Function to run the inference with different values of K
     """
@@ -36,12 +36,12 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
         curr_mb = [] # contains the objects
         min_bic_seed = torch.tensor(float('inf'))
         if curr_k != 0:
-            for curr_seed in seed:
+            for curr_seed in seed_list:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
                 mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity, kr = kr,
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
-                                            data_folder = data_folder)
+                                            data_folder = data_folder, sample_names = sample_names)
                 mb.run_inference(num_iter, lr)
                 curr_mb.append(mb.final_dict)
 
@@ -65,7 +65,7 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
 
 class mobster_MV():
     def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None, kr = None, seed=1234, 
-                    par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
+                    par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None, sample_names = None):
         """
         Parameters:
             NV : numpy array
@@ -117,6 +117,11 @@ class mobster_MV():
                 if not isinstance(mut_id, list): # if it is not a list
                     mut_id = list(mut_id)
                 self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
+        
+        if sample_names is not None:
+            self.sample_names = sample_names
+        else:
+            self.sample_names = [f"sample{i}" for i in range(1, NV.shape[1]+1)]
 
     def compute_kmeans_centers(self):
         best_bic = float('inf')
@@ -771,6 +776,12 @@ class mobster_MV():
         
         self.params = {k: v.detach().cpu().numpy() for k, v in self.params.items()}
 
+        # Format data
+        NV_df = pd.DataFrame(self.NV.numpy())
+        NV_df.columns = [f"NV_{name}" for name in self.sample_names]
+        DP_df = pd.DataFrame(self.DP.numpy())
+        DP_df.columns = [f"NV_{name}" for name in self.sample_names]
+
         self.final_dict = {
         "NV": self.NV.numpy(),
         "DP": self.DP.numpy(),
@@ -787,7 +798,8 @@ class mobster_MV():
         "gradient_norms": gradient_norms,
         "n_components": self.K,
         "used_components": self.final_K,
-        "seed": self.seed
+        "seed": self.seed,
+        "sample_names": self.sample_names
         }
 
 
