@@ -305,7 +305,7 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
     # color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
     for k in range(mb['used_components']):
         delta_kd = delta[k]
-        maxx = torch.argmax(delta_kd)
+        maxx = np.argmax(delta_kd)
         if maxx == 1:
             # plot beta
             a = phi_beta[k] * kappa_beta[k]
