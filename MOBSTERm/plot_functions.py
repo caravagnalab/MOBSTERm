@@ -214,7 +214,7 @@ def plot_marginals_single_nd(mb, savefig = False, data_folder = None):
                 axes[k,d].legend()
             elif maxx == 0:
                 # plot pareto
-                pdf = pareto.pdf(x, alpha[k,d], scale=mb['pareto_L']) #* weights[k]
+                pdf = pareto.pdf(x, alpha[k,d], scale=mb['model_parameters']['scale_pareto']) #* weights[k]
                 axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
                 axes[k,d].legend()
             else:
@@ -315,7 +315,7 @@ def plot_marginals_single_1d(mb, savefig = False, data_folder = None):
             axes[k].legend()
         elif maxx == 0:
             # plot pareto
-            pdf = pareto.pdf(x, alpha[k], scale=mb['pareto_L']) #* weights[k]
+            pdf = pareto.pdf(x, alpha[k], scale=mb['model_parameters']['scale_pareto']) #* weights[k]
             axes[k].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
             axes[k].legend()
         else:

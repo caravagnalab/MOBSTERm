@@ -8,11 +8,10 @@ from torch.distributions import constraints
 from pyro.infer.autoguide import AutoDelta
 from sklearn.mixture import GaussianMixture
 import pandas as pd
-from itertools import combinations
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from sklearn.cluster import KMeans
+# from sklearn.cluster import KMeans
 from .BoundedPareto import BoundedPareto
 
 from collections import defaultdict
@@ -104,10 +103,16 @@ class mobster_MV():
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
             
             if purity is not None:
+                if len(sample_names) != NV.shape[1]:
+                    raise ValueError(f"Length of purity ({len(purity)}) does not match "
+                                    f"the number of columns in NV and DP ({NV.shape[1]}).")
                 self.purity = torch.tensor(purity)
             else:
                 self.purity = torch.ones(NV.shape[1])
             if kr is not None:
+                if len(sample_names) != NV.shape[1]:
+                    raise ValueError(f"Length of karyotype ({len(kr)}) does not match "
+                                    f"the number of columns in NV and DP ({NV.shape[1]}).")
                 self.kr = kr
             else:
                 self.kr = ['1:1']*NV.shape[1]
@@ -119,6 +124,9 @@ class mobster_MV():
                 self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
         
         if sample_names is not None:
+            if len(sample_names) != NV.shape[1]:
+                raise ValueError(f"Length of sample_names ({len(sample_names)}) does not match "
+                                f"the number of columns in NV and DP ({NV.shape[1]}).")
             self.sample_names = sample_names
         else:
             self.sample_names = [f"sample{i}" for i in range(1, NV.shape[1]+1)]
@@ -773,6 +781,7 @@ class mobster_MV():
         print(f"ICL: {icl} \n")
         
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
+        self.params['scale_pareto'] =  self.pareto_L.numpy()
         
         self.params = {k: v.detach().cpu().numpy() for k, v in self.params.items()}
 
@@ -787,7 +796,6 @@ class mobster_MV():
         "DP": self.DP.numpy(),
         "mutation_id": self.mut_id,
         "model_parameters" : self.params,
-        "pareto_L": self.pareto_L.numpy(),
         "cluster_id": self.cluster_assignments.numpy(),
         "bic": bic,
         "icl": icl,
@@ -895,6 +903,7 @@ class mobster_MV():
             }
         return results
 
+    # MOVE THIS
     def plot_loss_lks_dist(self):
         # dist_pi, dist_pi_euc = self.compute_mixing_distances(self.pi_list)
         # dist_delta, dist_delta_euc = self.compute_mixing_distances(self.delta_list)
@@ -937,7 +946,7 @@ class mobster_MV():
         plt.show()
         plt.close()
 
-
+    # MOVE THIS
     def plot_grad_norms(self, gradient_norms):
         plt.figure(figsize=(10, 4), dpi=100).set_facecolor("white")
         for name, grad_norms in gradient_norms.items():
@@ -951,7 +960,7 @@ class mobster_MV():
             plt.savefig(f"plots/{self.data_folder}/gradient_norms_K_{self.K}_seed_{self.seed}.png")
         plt.show()
         plt.close()
-       
+    
     def calculate_number_of_params(self, params):
         keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param", "probs_pareto_param"]
         total_params = 0
