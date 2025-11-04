@@ -103,14 +103,14 @@ class mobster_MV():
             self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
             
             if purity is not None:
-                if len(sample_names) != NV.shape[1]:
+                if len(purity) != NV.shape[1]:
                     raise ValueError(f"Length of purity ({len(purity)}) does not match "
                                     f"the number of columns in NV and DP ({NV.shape[1]}).")
                 self.purity = torch.tensor(purity)
             else:
                 self.purity = torch.ones(NV.shape[1])
             if kr is not None:
-                if len(sample_names) != NV.shape[1]:
+                if len(kr) != NV.shape[1]:
                     raise ValueError(f"Length of karyotype ({len(kr)}) does not match "
                                     f"the number of columns in NV and DP ({NV.shape[1]}).")
                 self.kr = kr
@@ -783,8 +783,12 @@ class mobster_MV():
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         self.params['scale_pareto'] =  self.pareto_L.numpy()
         
-        self.params = {k: v.detach().cpu().numpy() for k, v in self.params.items()}
-
+        # self.params = {k: v.detach().numpy() for k, v in self.params.items()}
+        self.params = {
+            k: v.detach().numpy() if isinstance(v, torch.Tensor) else v
+            for k, v in self.params.items()
+        }
+        
         # Format data
         NV_df = pd.DataFrame(self.NV.numpy())
         NV_df.columns = [f"NV_{name}" for name in self.sample_names]
