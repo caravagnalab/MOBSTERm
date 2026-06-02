@@ -37,10 +37,12 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
         if curr_k != 0:
             for curr_seed in seed_list:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity, kr = kr,
-                                            seed = curr_seed, par_threshold = par_threshold,
-                                            loss_threshold = loss_threshold, savefig = savefig, 
-                                            data_folder = data_folder, sample_names = sample_names)
+                mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity,
+                                kr = kr, seed = curr_seed,
+                                par_threshold = par_threshold,
+                                loss_threshold = loss_threshold,
+                                savefig = savefig, data_folder = data_folder,
+                                sample_names = sample_names)
                 mb.run_inference(num_iter, lr)
                 curr_mb.append(mb.final_dict)
 
