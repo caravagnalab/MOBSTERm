@@ -795,11 +795,16 @@ class mobster_MV():
         DP_df = pd.DataFrame(self.DP.numpy())
         DP_df.columns = [f"NV_{name}" for name in self.sample_names]
 
+        params_stop_list_detached = {
+            key: [v.detach().clone() for v in val]
+            for key, val in self.params_stop_list.items()
+        }
         self.final_dict = {
         "NV": self.NV.numpy(),
         "DP": self.DP.numpy(),
         "mutation_id": self.mut_id,
         "model_parameters" : self.params,
+        "params_stop_list": params_stop_list_detached,
         "cluster_id": self.cluster_assignments.numpy(),
         "bic": bic,
         "icl": icl,
