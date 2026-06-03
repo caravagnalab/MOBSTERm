@@ -18,45 +18,47 @@ from collections import defaultdict
 from pandas.core.common import flatten
 from .plot_functions import *
 
+
 def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [], 
         purity=None, kr = None, seed_list=[123,1234], par_threshold = 0.005, 
-        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None, sample_names =  None):
+        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None,
+        sample_names =  None):
     """
     Function to run the inference with different values of K
     """
-    min_bic = torch.tensor(float('inf'))
-    best_K = torch.tensor(float('inf'))
-    best_total_seed = torch.tensor(float('inf'))
-    mb_list = []
-    mb_final = None
     
-    for curr_k in K:
-        j = 0
-        curr_mb = [] # contains the objects
-        min_bic_seed = torch.tensor(float('inf'))
-        if curr_k != 0:
-            for curr_seed in seed_list:
-                print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-                mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity,
-                                kr = kr, seed = curr_seed,
-                                par_threshold = par_threshold,
-                                loss_threshold = loss_threshold,
-                                savefig = savefig, data_folder = data_folder,
-                                sample_names = sample_names)
-                mb.run_inference(num_iter, lr)
-                curr_mb.append(mb.final_dict)
+    for k in K:
+        if k < 2:
+            raise ValueError("{k} is an invalid number of clusters")
+    
+    K = list(set(K))
 
-                if curr_mb[j]['icl'] <= min_bic_seed:
-                    min_bic_seed = curr_mb[j]['icl']
-                    mb_best_seed = curr_mb[j]
-                j+=1
-            mb_list.append(mb_best_seed)
-            if mb_best_seed['icl'] <= min_bic:
-                min_bic = mb_best_seed['icl']
-                best_K = mb_best_seed['n_components']
-                best_total_seed = mb_best_seed['seed']
-                mb_final = mb_best_seed
-    print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
+    mb_list = []
+    for curr_k in K:
+        curr_mb = [] # contains the objects
+        for curr_seed in seed_list:
+            print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
+            mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity,
+                            kr = kr, seed = curr_seed,
+                            par_threshold = par_threshold,
+                            loss_threshold = loss_threshold,
+                            savefig = savefig, data_folder = data_folder,
+                            sample_names = sample_names)
+            mb.run_inference(num_iter, lr)
+            curr_mb.append(mb.final_dict)
+
+        best_idx = min(range(len(curr_mb)), key=lambda i: curr_mb[i]['icl'])
+        mb_best_seed = curr_mb[best_idx]
+
+        mb_list.append(mb_best_seed)
+
+    best_idx = min(range(len(mb_list)), key=lambda i: mb_list[i]['icl'])
+    mb_final = mb_list[best_idx]
+    best_K = mb_final['n_components']
+    best_total_seed = mb_final['seed']
+
+    print(f"Selected number of clusters is {best_K} " +
+          f"with seed {best_total_seed}")
     mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
     return {
         "best_fit": mb_final,
@@ -65,8 +67,10 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None, kr = None, seed=1234, 
-                    par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None, sample_names = None):
+    def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None,
+                 kr = None, seed=1234, par_threshold = 0.005,
+                 loss_threshold = 0.01, savefig = False, data_folder = None,
+                 sample_names = None):
         """
         Parameters:
             NV : numpy array
