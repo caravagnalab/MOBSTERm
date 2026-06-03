@@ -6,12 +6,13 @@ from scipy.stats import beta, pareto
 from .BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import pandas as pd
 from itertools import combinations
 
 from .aux_functions import *
 
-def plot_deltas(mb):
+def plot_deltas(mb: dict) -> Figure:
     """
     Plots delta tests
 
@@ -73,7 +74,7 @@ def plot_deltas(mb):
 
     return fig
 
-def plot_responsib(mb):
+def plot_responsib(mb: dict) -> Figure:
     """
     Plots responsibilities
 
@@ -100,16 +101,7 @@ def plot_responsib(mb):
 
     return fig
 
-def get_paretos_title(samples, k, d, alpha_pareto, probs_pareto=None):
-    alpha_value = round(float(alpha_pareto[k,d]), ndigits=2)
-    title = f"{samples[d]} Cluster {k} - alpha {alpha_value}"
-    if probs_pareto is None:
-        return title
-
-    probs_value = round(float(probs_pareto[k,d]), ndigits=2)
-    return f"{title}, p {probs_value}"
-
-def plot_paretos(mb):
+def plot_paretos(mb: dict) -> Figure:
     """
     Plots pareto parameters
 
@@ -160,12 +152,7 @@ def plot_paretos(mb):
 
     return fig
 
-def get_betas_title(samples, k, d, phi_beta, kappa_beta):
-    phi_value = round(float(phi_beta[k,d]), ndigits=2)
-    kappa_value = round(float(kappa_beta[k,d]), ndigits=2)
-    return f"{samples[d]} Cluster {k} - phi {phi_value}, kappa {kappa_value}"
-
-def plot_betas(mb):
+def plot_betas(mb: dict) -> Figure:
     """
     Plots beta parameters
 
@@ -210,13 +197,8 @@ def plot_betas(mb):
 
     return fig
 
-def get_color_mapping(best_fit, unique_labels):
-    if best_fit['used_components'] == best_fit['n_components']:
-        return colors
-
-    return colors[:len(unique_labels)]
-
-def plot_cluster_marginals(mb, plot_null_vaf_values=False):
+def plot_cluster_marginals(mb: dict,
+                           plot_null_vaf_values: bool=False) -> Figure:
     """
     Plots cluster marginals
 
@@ -318,7 +300,7 @@ def plot_cluster_marginals(mb, plot_null_vaf_values=False):
 
     return fig
 
-def plot_mixing_proportions(mb):
+def plot_mixing_proportions(mb: dict) -> Figure:
     """
     Plots mixing proportions
 
@@ -392,14 +374,15 @@ def plot_mixing_proportions(mb):
 
     return fig
 
-def plot_marginals_inference(mb, plot_null_vaf_values=False):
+def plot_marginals_inference(mb: dict,
+                             plot_null_vaf_values: bool=False) -> Figure:
     """
     Plots marginal inference
 
     Args:
         mb (dict): The result of `MOBSTERM.fit()` or its 'best_fit' value.
         plot_null_vaf_values (bool): A Boolean parameter to plot null VAF
-                values (default: True).
+                values (default: False).
 
     Returns:
         matplotlib.figure.Figure: A figure representing the marginal inference.
@@ -452,7 +435,7 @@ def plot_marginals_inference(mb, plot_null_vaf_values=False):
 
     return fig
 
-def plot_scatter_inference(mb):
+def plot_scatter_inference(mb: dict) -> Figure:
     """
     Plots scatter inference
 
