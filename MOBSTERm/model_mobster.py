@@ -9,6 +9,11 @@ from pyro.infer.autoguide import AutoDelta
 from sklearn.mixture import GaussianMixture
 import pandas as pd
 
+import torch.multiprocessing as mp
+
+from rich.progress import Progress, MofNCompleteColumn, TextColumn, BarColumn
+from rich.progress import TaskProgressColumn, TimeElapsedColumn
+
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 # from sklearn.cluster import KMeans
@@ -18,11 +23,72 @@ from collections import defaultdict
 from pandas.core.common import flatten
 from .plot_functions import *
 
+from .aux_functions import colors
+
+
+def fit_task(NV, DP, mut_id, num_iter, K, purity, kr, seed,
+             par_threshold, loss_threshold, lr, savefig,
+             data_folder, sample_names, K_idx, seed_idx,
+             result_queue, progress_queue, worker_id,
+             semaphore):
+    with semaphore:
+        mb = mobster_MV(NV, DP, mut_id, K=K[K_idx], purity=purity,
+                        kr=kr, seed=seed[seed_idx],
+                        par_threshold=par_threshold,
+                        loss_threshold=loss_threshold,
+                        savefig=savefig, data_folder=data_folder,
+                        sample_names=sample_names,
+                        progress_queue=progress_queue,
+                        worker_id=worker_id)
+        mb.run_inference(num_iter, lr)
+
+        for name in ['icl', 'bic']:
+            mb.final_dict[name] = mb.final_dict[name].detach()
+
+        result_queue.put((K_idx, seed_idx, mb.final_dict))
+
+
+def handle_progress_bars(K, seed_list, num_iter, progress_queue):
+
+    with Progress(
+        *Progress.get_default_columns(),
+        MofNCompleteColumn()
+    ) as progress:
+        
+        # Create a unique progress bar for each worker track
+        task_ids = []
+        worker_id = 0
+        for K_idx in range(len(K)):
+            for seed_idx in range(len(seed_list)):
+                task_ids.append(progress.add_task(
+                    (f"[{colors[K_idx]}]K: {K[K_idx]} "
+                     + f"seed: {seed_list[seed_idx]}"),
+                    total=num_iter
+                ))
+                worker_id += 1
+
+        active_workers = len(K)*len(seed_list)
+        while active_workers > 0:
+            worker_id, advance_by = progress_queue.get()
+
+            if advance_by is None:
+                # the worker finished
+                active_workers -= 1
+
+                # update the required number of step 
+                task_id = task_ids[worker_id]
+                task = progress.tasks[task_id]
+                progress.update(task_ids[worker_id], completed=task.completed,
+                                total=task.completed,
+                                start_time=task.start_time)
+            else:
+                # Update the specific progress bar associated with this worker
+                progress.advance(task_ids[worker_id], advance=advance_by)
 
 def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [], 
         purity=None, kr = None, seed_list=[123,1234], par_threshold = 0.005, 
         loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None,
-        sample_names =  None):
+        sample_names = None, quiet = False, num_of_threads = 1):
     """
     Function to run the inference with different values of K
     """
@@ -33,44 +99,73 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
     
     K = list(set(K))
 
-    mb_list = []
-    for curr_k in K:
-        curr_mb = [] # contains the objects
-        for curr_seed in seed_list:
-            print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
-            mb = mobster_MV(NV, DP, mut_id, K = curr_k, purity = purity,
-                            kr = kr, seed = curr_seed,
-                            par_threshold = par_threshold,
-                            loss_threshold = loss_threshold,
-                            savefig = savefig, data_folder = data_folder,
-                            sample_names = sample_names)
-            mb.run_inference(num_iter, lr)
-            curr_mb.append(mb.final_dict)
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass  # Already set
 
-        best_idx = min(range(len(curr_mb)), key=lambda i: curr_mb[i]['icl'])
-        mb_best_seed = curr_mb[best_idx]
+    processes = []
+    result_queue = mp.Queue()
+
+    if quiet:
+        progress_queue = None
+    else:
+        progress_queue = mp.Queue()
+
+        p = mp.Process(target=handle_progress_bars,
+                       args=(K, seed_list, num_iter, progress_queue))
+        p.start()
+        processes.append(p)
+
+    semaphore = mp.Semaphore(num_of_threads)
+
+    worker_id = 0
+    for K_idx in range(len(K)):
+        for seed_idx in range(len(seed_list)):
+            p = mp.Process(
+                target=fit_task,
+                args=(NV, DP, mut_id, num_iter, K, purity, kr, seed_list,
+                     par_threshold, loss_threshold, lr, savefig,
+                     data_folder, sample_names, K_idx, seed_idx,
+                     result_queue, progress_queue, worker_id,
+                     semaphore)
+            )
+            p.start()
+            processes.append(p)
+            worker_id += 1
+
+    # collect results
+    results = [[None]*len(seed_list) for _ in range(len(K))]
+    for _ in range(len(K)*len(seed_list)):
+        K_idx, seed_idx, chain_samples = result_queue.get()
+        results[K_idx][seed_idx] = chain_samples
+
+    # close process
+    for p in processes:
+        p.join()
+
+    mb_list = []
+    for K_idx in range(len(K)):
+        K_results = results[K_idx]
+        best_idx = min(range(len(K_results)), key=lambda i: K_results[i]['icl'])
+        mb_best_seed = K_results[best_idx]
 
         mb_list.append(mb_best_seed)
 
     best_idx = min(range(len(mb_list)), key=lambda i: mb_list[i]['icl'])
     mb_final = mb_list[best_idx]
-    best_K = mb_final['n_components']
-    best_total_seed = mb_final['seed']
 
-    print(f"Selected number of clusters is {best_K} " +
-          f"with seed {best_total_seed}")
     mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
     return {
         "best_fit": mb_final,
         "runs": mb_list_ordered # mb_list contains the best seed for each K
     }
 
-
 class mobster_MV():
     def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None,
                  kr = None, seed=1234, par_threshold = 0.005,
                  loss_threshold = 0.01, savefig = False, data_folder = None,
-                 sample_names = None):
+                 sample_names = None, progress_queue = None, worker_id = 0):
         """
         Parameters:
             NV : numpy array
@@ -95,6 +190,9 @@ class mobster_MV():
         self.loss_threshold = loss_threshold
         self.savefig = savefig
         self.data_folder = data_folder
+
+        self.progress_queue = progress_queue
+        self.worker_id = worker_id
 
         if NV is not None and DP is not None:
             if NV.ndim == 1:
@@ -738,7 +836,9 @@ class mobster_MV():
         check_conv = 0
         params = self.get_parameters()
         min_iter = 200
-        
+        last_update = 0
+        progress_update_level = 7
+
         for i in range(num_iter):
             old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
             for key in old_par:
@@ -770,8 +870,9 @@ class mobster_MV():
                 if check_conv == conv_iter and conv_loss == True:
                     break
 
-            if i % 50 == 0:
-                print("Iteration {}: Loss = {}".format(i, loss))
+            if self.progress_queue is not None and i % progress_update_level == 0:
+                self.progress_queue.put((self.worker_id, progress_update_level))
+                last_update = i
 
         self.params = self.get_parameters()
 
@@ -784,7 +885,6 @@ class mobster_MV():
 
         bic = self.compute_BIC(self.params, final_lk)
         icl = self.compute_ICL(self.params, bic)
-        print(f"ICL: {icl} \n")
         
         self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
         self.params['scale_pareto'] =  self.pareto_L.numpy()
@@ -820,6 +920,9 @@ class mobster_MV():
         "sample_names": self.sample_names
         }
 
+        if self.progress_queue is not None:
+            self.progress_queue.put((self.worker_id, i-last_update))
+            self.progress_queue.put((self.worker_id, None))
 
     def compute_final_lk(self, which):
         """
