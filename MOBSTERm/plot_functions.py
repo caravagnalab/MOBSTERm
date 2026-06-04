@@ -363,12 +363,12 @@ def plot_marginals_single_1d(mb, save_folder= None):
     plt.close()
 
 
-def plot_marginals_single(mb):
+def plot_marginals_single(mb, save_folder = None):
     D = mb['NV'].shape[1]
     if D == 1:
-        plot_marginals_single_1d(mb)
+        plot_marginals_single_1d(mb, save_folder = save_folder)
     else:
-        plot_marginals_single_nd(mb)
+        plot_marginals_single_nd(mb, save_folder = save_folder)
        
 
 def plot_mixing_proportions(mb, save_folder=None):
@@ -498,6 +498,7 @@ def plot_marginals_inference_nd(mb, D, save_folder = None):
 def plot_marginals_inference_1d(mb, D, save_folder = None):
     vaf = (mb['NV'] / mb['DP'])
 
+
     columns=[f"Sample {d+1}" for d in range(D)]
     df = pd.DataFrame(vaf, columns=columns)
     mutation_ids = [f"M{i}" for i in range(mb['NV'].shape[0])]
@@ -538,12 +539,12 @@ def plot_marginals_inference_1d(mb, D, save_folder = None):
     plt.show()
     plt.close()
 
-def plot_marginals_inference(mb):
+def plot_marginals_inference(mb, save_folder=None):
     D = mb['NV'].shape[1]
     if D == 1:
-        plot_marginals_inference_1d(mb, D)
+        plot_marginals_inference_1d(mb, D, save_folder=None)
     else:
-        plot_marginals_inference_nd(mb, D)
+        plot_marginals_inference_nd(mb, D, save_folder=None)
         
 def plot_scatter_inference(mb, save_folder=None):
     """
@@ -683,7 +684,7 @@ def plot_loss_lks_dist(fit_dict, par_threshold=0.005, save_folder = None):
     if save_folder is not None:
         if not os.path.exists(f"plots/{save_folder}"):
             os.makedirs(f"plots/{save_folder}")
-        plt.savefig(f"plots/{save_folder}/likelihood_K_{K}_seed_{seed}.png")
+        plt.savefig(f"plots/{save_folder}/loss_likelihood_K_{K}_seed_{seed}.png")
     plt.show()
     plt.close()
 

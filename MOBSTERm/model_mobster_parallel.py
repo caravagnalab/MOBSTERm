@@ -160,6 +160,8 @@ class mobster_MV():
                 if not isinstance(mut_id, list): # if it is not a list
                     mut_id = list(mut_id)
                 self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
+            else:
+                self.mut_id = [f"m_{n}" for n in range(self.NV.shape[0])]
         
         if sample_names is not None:
             if len(sample_names) != NV.shape[1]:
