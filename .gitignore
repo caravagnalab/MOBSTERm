@@ -30,3 +30,5 @@ multiple_hitch_params.txt
 pyclone_hitchhikers/
 run_multiple_hitchhiker_pyclone.py
 test_pyclone.ipynb
+run_model_parallel.py
+data/real_data/
