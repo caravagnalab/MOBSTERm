@@ -1,0 +1,996 @@
+import numpy as np
+import pyro
+import pyro.distributions as dist
+import pyro.poutine as poutine
+import copy
+import torch
+from torch.distributions import constraints
+from pyro.infer.autoguide import AutoDelta
+from sklearn.mixture import GaussianMixture
+import pandas as pd
+from joblib import Parallel, delayed
+
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+# from sklearn.cluster import KMeans
+from BoundedPareto import BoundedPareto
+
+from collections import defaultdict
+from pandas.core.common import flatten
+from plot_functions_parallel import *
+
+
+def _run_single_fit(args):
+    """
+    Top-level helper for parallel execution of a single (K, seed) run.
+    Must be a top-level function so it is picklable for multiprocessing.
+    """
+    (NV, DP, mut_id, curr_k, curr_seed, purity, kr, par_threshold,
+     loss_threshold, savefig, data_folder, sample_names, num_iter, lr) = args
+    print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
+    mb = mobster_MV(NV, DP, mut_id, K=curr_k, purity=purity, kr=kr,
+                    seed=curr_seed, par_threshold=par_threshold,
+                    loss_threshold=loss_threshold, savefig=savefig,
+                    data_folder=data_folder, sample_names=sample_names)
+    mb.run_inference(num_iter, lr)
+    return mb.final_dict
+
+
+def fit(NV=None, DP=None, mut_id=None, num_iter=2000, K=[],
+        purity=None, kr=None, seed_list=[123, 1234], par_threshold=0.005,
+        loss_threshold=0.01, lr=0.01, savefig=False, data_folder=None,
+        sample_names=None, n_jobs=1):
+    """
+    Function to run the inference with different values of K.
+
+    Parameters
+    ----------
+    n_jobs : int
+        Number of parallel workers for (K, seed) combinations.
+        Use n_jobs=-1 to use all available CPUs.
+        Defaults to 1 (sequential) to preserve original behaviour.
+        Note: multiprocessing is used (not threading) so each worker
+        gets its own Pyro param store.
+    """
+    # Build the full list of jobs (skip K=0 entries)
+    jobs = [
+        (NV, DP, mut_id, curr_k, curr_seed, purity, kr, par_threshold,
+         loss_threshold, savefig, data_folder, sample_names, num_iter, lr)
+        for curr_k in K if curr_k != 0
+        for curr_seed in seed_list
+    ]
+
+    if n_jobs == 1:
+        # Sequential path – identical behaviour to original
+        results = [_run_single_fit(job) for job in jobs]
+    else:
+        # joblib works in both scripts and Jupyter notebooks.
+        # loky backend spawns independent processes so each gets its own Pyro param store.
+        results = Parallel(n_jobs=n_jobs, backend="loky")(
+            delayed(_run_single_fit)(job) for job in jobs
+        )
+
+    # --- Aggregate results: best seed per K, then best K overall ---
+    # Group by n_components
+    from collections import defaultdict as _dd
+    by_k = _dd(list)
+    for r in results:
+        by_k[r['n_components']].append(r)
+
+    min_bic = float('inf')
+    mb_list = []
+    mb_final = None
+    best_K = None
+    best_total_seed = None
+
+    for curr_k, runs in by_k.items():
+        mb_best_seed = min(runs, key=lambda d: d['icl'])
+        mb_list.append(mb_best_seed)
+        if mb_best_seed['icl'] < min_bic:
+            min_bic = mb_best_seed['icl']
+            best_K = mb_best_seed['n_components']
+            best_total_seed = mb_best_seed['seed']
+            mb_final = mb_best_seed
+
+    print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
+    mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
+    return {
+        "best_fit": mb_final,
+        "runs": mb_list_ordered  # mb_list contains the best seed for each K
+    }
+
+
+class mobster_MV():
+    def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None, kr = None, seed=1234, 
+                    par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None, sample_names = None):
+        """
+        Parameters:
+            NV : numpy array
+                A numpy array containing the NV for each sample -> NV : [NV_s1, NV_s2, ..., NV_sn]
+            DP : numpy array
+                A numpy array containing the DP for each sample -> DP : [DP_s1, DP_s2, ..., DP_sn]
+            K : int
+                Number of clonal/subclonal clusters
+            purity: list of float
+                List of previously estimated purities of the tumor samples.
+            kr: list of str
+                List of the karyotypes of the samples in the form major_allele:minor_allele.
+        """   
+        self.seed = seed
+        pyro.clear_param_store()
+        pyro.set_rng_seed(self.seed)
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
+        self.K = K
+        self.par_threshold = par_threshold
+        self.loss_threshold = loss_threshold
+        self.savefig = savefig
+        self.data_folder = data_folder
+
+        if NV is not None and DP is not None:
+            if NV.ndim == 1:
+                NV = NV.unsqueeze(-1)
+                DP = DP.unsqueeze(-1)
+            vaf = NV.numpy()/DP.numpy()
+            cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
+            self.valid_indexes = cond
+            NV = NV[cond,:]
+            self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
+            DP = DP[cond,:]
+            self.DP = torch.tensor(DP) if not isinstance(DP, torch.Tensor) else DP
+            
+            if purity is not None:
+                if len(purity) != NV.shape[1]:
+                    raise ValueError(f"Length of purity ({len(purity)}) does not match "
+                                    f"the number of columns in NV and DP ({NV.shape[1]}).")
+                self.purity = torch.tensor(purity)
+            else:
+                self.purity = torch.ones(NV.shape[1])
+            if kr is not None:
+                if len(kr) != NV.shape[1]:
+                    raise ValueError(f"Length of karyotype ({len(kr)}) does not match "
+                                    f"the number of columns in NV and DP ({NV.shape[1]}).")
+                self.kr = kr
+            else:
+                self.kr = ['1:1']*NV.shape[1]
+            self.set_prior_parameters()
+
+            if mut_id is not None:
+                if not isinstance(mut_id, list): # if it is not a list
+                    mut_id = list(mut_id)
+                self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
+            else:
+                self.mut_id = [f"m_{n}" for n in range(self.NV.shape[0])]
+        
+        if sample_names is not None:
+            if len(sample_names) != NV.shape[1]:
+                raise ValueError(f"Length of sample_names ({len(sample_names)}) does not match "
+                                f"the number of columns in NV and DP ({NV.shape[1]}).")
+            self.sample_names = sample_names
+        else:
+            self.sample_names = [f"sample{i}" for i in range(1, NV.shape[1]+1)]
+
+    def compute_kmeans_centers(self):
+        best_bic = float('inf')
+        self.best_centers = None
+        best_labels = None
+        best_weights = None
+        best_cov = None
+        
+        """
+        # Loop to choose the seed which produces a result with the lowest inertia
+        for seed in range(1, 50):
+            kmeans = KMeans(n_clusters=self.K, random_state=seed, max_iter=1).fit((self.NV/self.DP).numpy())
+            centers = torch.tensor(kmeans.cluster_centers_)
+            # Compute inertia (the lower the better)
+            inertia = kmeans.inertia_
+            
+            # Update best results if current inertia is lower
+            if inertia < best_inertia:
+                best_inertia = inertia
+                self.best_centers = centers.clone()
+                best_labels = kmeans.labels_.copy()
+        cluster_sizes = np.bincount(best_labels.astype(int), minlength=self.K)
+        weights_kmeans = cluster_sizes.reshape(-1)/np.sum(cluster_sizes.reshape(-1))
+        self.init_weights = torch.tensor(weights_kmeans)
+        """
+        # OPT: compute VAF once instead of on every loop iteration
+        vaf_np = (self.NV / self.DP).numpy()
+        for seed in range(1, 15):
+            gmm = GaussianMixture(n_components=self.K, covariance_type='full', random_state=seed).fit(vaf_np)
+            bic = gmm.bic(vaf_np)
+            # Update best results if current bic is lower
+            if bic < best_bic:
+                best_bic = bic
+                best_labels = gmm.predict(vaf_np)
+                best_cov = gmm.covariances_
+                best_weights = gmm.weights_
+                self.best_centers = torch.tensor(gmm.means_)
+        
+        self.init_weights = torch.tensor(best_weights)
+        
+        # -----------------Gaussian noise------------------#
+        
+        self.kmeans_labels = torch.tensor(best_labels).clone()
+        self.kmeans_centers_no_noise = self.best_centers.clone()
+        # cov = torch.tensor(np.abs(np.array([np.diagonal(cov) for cov in gmm.covariances_])))
+        # # print(torch.tensor(best_cov).shape)
+        # print(cov)
+        # self.init_kappas = ((self.kmeans_centers_no_noise*(1-self.kmeans_centers_no_noise)/cov) -1)-self.k_beta_L
+        # print(self.init_kappas)
+
+        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
+        self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations 
+        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
+        
+        self.kmeans_centers_no_noise = torch.minimum(self.kmeans_centers_no_noise, self.max_vaf.unsqueeze(0) - 1e-5)
+        
+
+    def noise_kmeans(self):
+        # Add gaussian noise to found centers
+        self.best_centers = self.best_centers + self.gaussian_noise  
+        self.best_centers = torch.maximum(self.best_centers, self.phi_beta_L.unsqueeze(0) + 1e-5)
+        self.best_centers = torch.minimum(self.best_centers, self.max_vaf.unsqueeze(0) - 1e-5)
+        self.kmeans_centers = self.best_centers
+        """
+        # INITIALIZE KAPPAS
+        centroids = kmeans.cluster_centers_
+        variances = []
+        for i in range(self.K):
+            vaf = self.NV/self.DP
+            points_in_cluster = vaf[best_labels == i]
+            
+            # Get the centroid of the current cluster
+            centroid = centroids[i]
+
+            # Calculate the squared distances of points to the centroid
+            distances = np.linalg.norm(points_in_cluster - centroid, axis=1) ** 2
+
+            # Compute the variance (mean of squared distances)
+            cluster_variance = np.mean(distances)
+            variances.append(cluster_variance)
+
+        kappas = [1 / variance if variance > 0 else np.inf for variance in variances]
+        self.init_kappas = torch.tensor(np.tile(kappas, (self.NV.shape[1], 1)).T)
+        """
+        """"""
+
+    def initialize_delta(self):
+        phi_beta = self.kmeans_centers
+        a_beta = self.get_a_beta(phi_beta, self.k_beta_init)
+        b_beta = self.get_b_beta(phi_beta, self.k_beta_init)
+        beta_lk = dist.Beta(a_beta, b_beta).log_prob(self.kmeans_centers_no_noise)
+        
+        pareto_lk = BoundedPareto(self.pareto_L, self.alpha_pareto_mean, self.pareto_H).log_prob(self.kmeans_centers_no_noise)
+
+        zeros_lk = dist.Beta(self.a_beta_zeros, self.b_beta_zeros).log_prob(self.kmeans_centers_no_noise)
+        # kmeans_centers: KxD
+        K = self.K
+        D = self.NV.shape[1]
+
+        # OPT: fully vectorized replacement of the K*D nested Python loop.
+        # Stack likelihoods into K x D x 3, argsort once, then scatter fixed values.
+        stacked_lk = torch.stack([pareto_lk, beta_lk, zeros_lk], dim=-1)  # K x D x 3
+        sorted_indices = torch.argsort(stacked_lk, dim=-1, descending=True)  # K x D x 3
+
+        delta_values = torch.tensor([0.5, 0.3, 0.2])          # rank-0, rank-1, rank-2
+        conc_values  = torch.tensor([10.0, 1.0, 1.0])
+
+        # inverse_indices[k,d,rank] = position in last dim that should receive values[rank]
+        # scatter_: self[k,d, sorted_indices[k,d,r]] = src[k,d,r]
+        init_delta = torch.zeros(K, D, 3).scatter_(
+            -1, sorted_indices,
+            delta_values.expand(K, D, 3)
+        )
+        self.dirichlet_conc = torch.zeros(K, D, 3).scatter_(
+            -1, sorted_indices,
+            conc_values.expand(K, D, 3)
+        )
+
+        return init_delta
+
+
+    def cluster_initialization(self, compute_kmeans = True, final = False):
+        if compute_kmeans == True:
+            self.compute_kmeans_centers()
+        else:
+            self.noise_kmeans()
+            self.init_delta = self.initialize_delta()
+            # if final == True:
+            #     self.plot_initial_assignments()
+
+    def plot_initial_assignments(self):
+        # Plot kmeans result scatter
+        plt.figure()
+        unique_labels = np.unique(self.kmeans_labels)
+        cmap = cm.get_cmap('tab20')
+        color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+        colors = [color_mapping[label] for label in self.kmeans_labels.detach().numpy()]
+
+        # sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c = self.kmeans_labels, s = 20)
+        # legend1 = plt.legend(*sc.legend_elements(), loc="lower right")
+        # plt.gca().add_artist(legend1)
+
+        sc = plt.scatter(self.NV[:,0]/self.DP[:,0], self.NV[:,1]/self.DP[:,1], c=colors, s=20)  # tab20
+        handles = [plt.Line2D([0], [0], marker='o', color='w', label=f"{label}",
+                            markerfacecolor=color_mapping[label], markersize=10) 
+                for label in unique_labels]
+        plt.legend(handles=handles)
+
+        plt.scatter(self.kmeans_centers_no_noise[:, 0], 
+                    self.kmeans_centers_no_noise[:, 1], color='red', marker='x', s=25)
+        plt.title(f"GMM init (K = {self.K}, seed = {self.seed})")
+        plt.xlim([0,1])
+        plt.ylim([0,1])
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/kmeans_K_{self.K}_seed_{self.seed}.png")
+        plt.show()
+        
+        plt.close()
+
+        if self.K == 1:
+            fig, axes = plt.subplots(self.K, self.NV.shape[1], figsize=(16, 4))
+        else:
+            fig, axes = plt.subplots(self.K, self.NV.shape[1], figsize=(16, self.K*3))
+        if self.K == 1:
+            axes = ax = np.array([axes])  # add an extra dimension to make it 2D
+        plt.suptitle(f"GMM marginals with K={self.K}, seed={self.seed}",fontsize=14)
+        x = np.linspace(0.001, 1, 1000)
+
+        cmap = cm.get_cmap('tab20')
+        color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
+        phi = self.kmeans_centers
+        for k in range(self.K):
+            for d in range(self.NV.shape[1]):
+                delta_kd = self.init_delta[k, d]
+                maxx = torch.argmax(delta_kd)
+                if maxx == 1:
+                    # plot beta
+                    a = phi[k,d] * self.k_beta_init
+                    b = (1-phi[k,d]) * self.k_beta_init
+                    pdf = beta.pdf(x, a, b)# * weights[k]
+                    axes[k,d].plot(x, pdf, linewidth=1.5, label='Beta', color='r')
+                    axes[k,d].legend()
+                elif maxx == 0:
+                    # plot pareto
+                    pdf = pareto.pdf(x, self.alpha_pareto_init, scale=self.pareto_L) #* weights[k]
+                    axes[k,d].plot(x, pdf, linewidth=1.5, label='Pareto', color='g')
+                    axes[k,d].legend()
+                else:
+                    # private
+                    pdf = beta.pdf(x, self.a_beta_zeros, self.b_beta_zeros) # delta_approx
+                    axes[k,d].plot(x, pdf, linewidth=1.5, label='Zeros', color='b')
+                    axes[k,d].legend()
+
+                if torch.is_tensor(self.NV):
+                    data = self.NV[:,d].numpy()/self.DP[:,d].numpy()
+                else:
+                    data = np.array(self.NV[:,d])/np.array(self.DP[:,d])
+                # for i in np.unique(labels):
+                if k in unique_labels:
+                    axes[k, d].hist(data[self.kmeans_labels == k],  density=True, bins=30, alpha=1, color=color_mapping[k])
+                else:
+                    # Plot an empty histogram because we know there are no points in that k
+                    axes[k, d].hist([], density=True, bins=30, alpha=1)
+                axes[k,d].set_title(f"Sample {d+1} - Cluster {k}")
+                axes[k,d].grid(True, color='gray', linestyle='-', linewidth=0.2)
+                # axes[k,d].set_ylim([0,25])
+                axes[k,d].set_xlim([-0.01,0.8])
+                plt.tight_layout()
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/kmeans_marginals_K_{self.K}_seed_{self.seed}.png")
+        plt.show()
+        plt.close()
+
+    def log_sum_exp(self, args):
+        """
+        Compute the log-sum-exp for each data point, i.e. the log-likelihood for each data point.
+        log(p(x_i | theta)) = log(exp(a_1), ..., exp(a_K))
+        where: a_k = log(pi_k) + sum^D log(Bin(x_{id} | DP_{id}, p_{dk})) 
+        This function returns a N dimensional vector, where each entry corresponds to the log-likelihood of each data point.
+        """
+        if len(args.shape) == 1:
+            args = args.unsqueeze(0)
+        c = torch.amax(args, dim=0)
+        return c + torch.log(torch.sum(torch.exp(args - c), axis=0)) # sum over the rows (different clusters), so obtain a single likelihood for each data
+
+    def beta_lk(self, d, a_beta, b_beta):
+        """
+        Compute beta-binomial likelihood for a single dimension of a single cluster.
+        """
+        betabin = dist.BetaBinomial(a_beta, b_beta, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
+        return betabin # simply does log(weights) + log(density)
+    
+    def zeros_lk(self, d):
+        """
+        Compute beta-binomial likelihood for a single dimension of a single cluster, for values at 0.
+        """
+        dir = dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=self.DP[:,d]).log_prob(self.NV[:,d])
+        return dir # simply does log(weights) + log(density)
+
+    def pareto_binomial_pmf(self, NV, DP, alpha, H):
+        integration_points=500
+        # Generate integration points across all rows at once
+        t = torch.linspace(self.pareto_L, H, integration_points).unsqueeze(0)  # Shape (1, integration_points)
+        NV_expanded = NV.unsqueeze(-1)  # Shape (NV.shape[0], 1)
+        DP_expanded = DP.unsqueeze(-1)  # Shape (NV.shape[0], 1)
+        binom_vals = dist.Binomial(total_count=DP_expanded, probs=t).log_prob(NV_expanded).exp()
+        pareto_vals = BoundedPareto(self.pareto_L, alpha, H).log_prob(t).exp()  # Shape (1, integration_points)
+        integrand = binom_vals * pareto_vals
+
+        pmf_x = torch.trapz(integrand, t, dim=-1).log()  # Shape (NV.shape[0], NV.shape[1])
+
+        # OPT: return tensor directly instead of converting to list then back to tensor
+        return pmf_x
+
+    def pareto_lk_integr(self, d, alpha):
+        # OPT: pareto_binomial_pmf now returns a tensor directly; no torch.tensor() wrap needed
+        paretobin = self.pareto_binomial_pmf(NV=self.NV[:, d], DP=self.DP[:, d], alpha=alpha, H=self.pareto_H[d])
+        return paretobin  # tensor of len N (if D = 1, only N)
+    
+    def log_beta_par_mix_posteriors(self, delta, alpha, a_beta, b_beta):
+        # delta -> D x 3
+        log_lik = []
+        for d in range(delta.shape[0]): # range over samples
+            if ((delta[d, 0] > delta[d, 1]) and (delta[d, 0] > delta[d, 2])): # pareto
+                # log_lik.append(torch.log(delta[d, 0]) + self.pareto_lk(d, alpha[d])) # N tensor
+                log_lik.append(self.pareto_lk_integr(d, alpha[d])) # N tensor                
+            elif ((delta[d, 1] > delta[d, 0]) and (delta[d, 1] > delta[d, 2])): # beta
+                # log_lik.append(torch.log(delta[d, 1]) + self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
+                log_lik.append(self.beta_lk(d, a_beta[d], b_beta[d])) # N tensor
+            else:
+                zeros_lk = self.zeros_lk(d)
+                log_lik.append(zeros_lk)
+        stack_tensors = torch.stack(log_lik, dim=1)
+        # Non mi serve log sum exp perchè non devo più sommare sui delta_j
+        return stack_tensors # N x D
+    
+    def log_beta_par_mix_inference(self, probs_pareto, delta, alpha, a_beta, b_beta):
+        # delta -> (K, D, 3)
+        # a_beta, b_beta, probs_pareto -> (K, D)
+
+        expanded_DP = self.DP.unsqueeze(0)  # Shape: 1 x N x D
+        expanded_NV = self.NV.unsqueeze(0)  # Shape: 1 x N x D
+        delta_ =  torch.softmax(delta / self.temperature, dim=-1)
+        
+        delta_pareto = torch.log(delta_[:, :, 0].unsqueeze(1)) + dist.Binomial(total_count=expanded_DP, probs = probs_pareto.unsqueeze(1)).log_prob(expanded_NV)  # K x N x D tensor
+        delta_beta = torch.log(delta_[:, :, 1].unsqueeze(1)) + dist.BetaBinomial(a_beta.unsqueeze(1), b_beta.unsqueeze(1), total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
+        delta_zeros = torch.log(delta_[:, :, 2].unsqueeze(1)) + dist.BetaBinomial(self.a_beta_zeros, self.b_beta_zeros, total_count=expanded_DP).log_prob(expanded_NV) # K x N x D tensor
+        
+        # Stack creates a 3 x K x N x D tensor to apply log sum exp on first dimension => it sums the delta_pareto, delta_beta and delta_zeros 
+        stacked = torch.stack((delta_pareto, delta_beta, delta_zeros), dim=0) # 3 x K x N x D tensor
+        log = self.log_sum_exp(stacked) # apply log sum exp on first dimension => K x N x D tensor
+        
+        assert log.shape == (self.K, self.NV.shape[0],self.NV.shape[1])
+        
+        return  log # K x N x D
+    
+    def m_total_lk(self, probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference'):
+        lk = torch.ones(self.K, len(self.NV)) # matrix with K rows and as many columns as the number of data
+        
+        if which == 'inference':
+            log_sum = self.log_beta_par_mix_inference(probs_pareto, delta, alpha, a_beta, b_beta).sum(axis=2) # K x N x D, then sum over the data dimensions (columns) => K x N tensor
+            # print(f"Time taken for log_beta_par_mix_inference: {elapsed_time:.2f} seconds")
+            log_weights = torch.log(weights).unsqueeze(1)  # Shape: (K, 1)
+            lk = log_weights + log_sum  # Broadcasting: (K, 1) + (K, N) → (K, N)
+        else:
+            for k in range(self.K):
+                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+
+
+        assert lk.shape == (self.K, len(self.NV))
+        """
+        for k in range(self.K):
+            if which == 'inference':
+                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_inference_old(probs_pareto[k, :], delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)
+            else:
+                lk[k, :] = torch.log(weights[k]) + self.log_beta_par_mix_posteriors(delta[k, :, :], alpha[k, :], a_beta[k, :], b_beta[k, :]).sum(axis=1) # sums over the data dimensions (columns)                                                                                                       # put on each column of lk a different data; rows are the clusters
+        """
+        return lk
+
+
+    def compute_min_vaf(self):
+        """
+        Function to compute the minimum vaf value (different from 0) found in 
+        each dimension
+        """
+        vaf = self.NV/self.DP
+        copy_vaf = torch.clone(vaf)
+        # Replace zeros with a large value that will not be considered as minimum (i.e. 1)
+        masked_tensor = copy_vaf.masked_fill(vaf == 0, float(1.))
+
+        # Find the minimum value for each column excluding zeros
+        min_values, _ = torch.min(masked_tensor, dim=0)
+        min_values = min_values.repeat(self.K, 1)
+        min_vaf = torch.min(min_values)
+        # print("Minimum detected VAF:", min_vaf)
+        return min_vaf
+
+    def compute_max_vaf(self):
+        max_vaf = torch.tensor([int(nA) / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        return max_vaf * self.purity # tensor D x 1
+
+    def compute_max_pareto(self):
+        max_vaf = torch.tensor([1 / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        return max_vaf * self.purity # tensor D x 1
+
+
+    def set_prior_parameters(self):
+        # self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
+        self.max_vaf = self.compute_max_vaf() # tensor D x 1
+        self.min_vaf = self.compute_min_vaf()
+
+        # phi_beta
+        self.phi_beta_L = torch.ones(self.NV.shape[1])*0.1
+        # self.phi_beta_L = self.min_vaf
+        self.phi_beta_H = self.max_vaf
+
+        # k_beta
+        self.k_beta_L = torch.tensor(50.)
+        self.k_beta_init = torch.tensor(150.)
+        self.k_beta_mean = torch.tensor(150.)
+        self.k_beta_std = torch.tensor(0.01)
+
+        # alpha_pareto
+        self.alpha_pareto_mean = torch.tensor(1.8)
+        self.alpha_pareto_std = torch.tensor(0.5)
+        
+        self.alpha_pareto_init = torch.tensor(1.5)
+        # self.alpha_pareto_init = torch.tensor(2.5)
+        self.min_alpha = torch.tensor(0.5)
+        self.max_alpha = torch.tensor(4.)
+
+        # Bounded pareto
+        self.pareto_L = self.min_vaf
+        # self.pareto_H = self.max_vaf
+        self.pareto_H = self.compute_max_pareto()
+        self.probs_pareto_init = torch.tensor(0.09)
+
+        # Approximated Dirac delta (very narrow Beta around 0)
+        self.a_beta_zeros = torch.tensor(1e-4)
+        self.b_beta_zeros = torch.tensor(1e4)
+
+        self.temperature = 0.1
+
+    def model(self):
+        """
+        Define the model.
+        """
+        NV = self.NV
+        K = self.K
+        D = NV.shape[1] # number of dimensions (samples)
+
+        weights = pyro.sample("weights", dist.Dirichlet(torch.ones(K)))
+
+        with pyro.plate("plate_dims", D):
+            with pyro.plate("plate_probs", K):
+                # Prior for the Beta-Pareto weights
+                # delta is a K x D x 3 torch tensor (K: num layers, D: rows per layer, 3: columns per layer)
+                
+                delta = pyro.sample("delta", dist.Dirichlet(self.dirichlet_conc)) # self.dirichlet_conc: K x D x 3
+                
+                phi_beta = pyro.sample("phi_beta", dist.Uniform(self.phi_beta_L, self.phi_beta_H)) # 0.5 because we are considering a 1:1 karyotype
+                k_beta = pyro.sample("k_beta", dist.LogNormal(torch.log(self.k_beta_mean), self.k_beta_std))
+                
+                a_beta = self.get_a_beta(phi_beta, k_beta)
+                b_beta = self.get_b_beta(phi_beta, k_beta)
+
+                alpha = pyro.sample("alpha_pareto", dist.LogNormal(torch.log(self.alpha_pareto_mean), self.alpha_pareto_std))
+                probs_pareto = pyro.sample("probs_pareto", BoundedPareto(self.pareto_L, alpha, self.pareto_H)) # probs_pareto is a K x D tensor
+
+        # Data generation
+        with pyro.plate("plate_data", len(NV)):
+            # .sum() sums over the data because we have a log-likelihood
+            pyro.factor("lik", self.log_sum_exp(self.m_total_lk(probs_pareto, alpha, a_beta, b_beta, weights, delta, which = 'inference')).sum())
+
+
+    def get_a_beta(self, phi, kappa):
+        return phi * (kappa + self.k_beta_L)
+
+
+    def get_b_beta(self, phi, kappa):
+        return (1-phi) * (kappa + self.k_beta_L)
+
+
+    def init_fn(self, site):
+        site_name = site["name"]
+        param = None
+        K, D = self.K, self.NV.shape[1]
+        if site_name == "weights":
+            param = self.init_weights
+        if site_name == "delta":
+            param = self.init_delta
+        if site_name == "phi_beta":
+            param = self.kmeans_centers
+        if site_name == "k_beta":
+            param = torch.ones((K,D))*self.k_beta_init
+        if site_name == "alpha_pareto":
+            param = torch.ones((K,D))*self.alpha_pareto_init
+        if site_name == "probs_pareto":
+            param = torch.ones((K,D))*self.probs_pareto_init
+        return param
+
+
+    def autoguide(self):
+        return AutoDelta(poutine.block(self.model,
+                                       expose=["weights","phi_beta","delta", "k_beta", 
+                                               "alpha_pareto", "probs_pareto"]),
+                        init_loc_fn=self.init_fn)
+
+
+    def guide(self):
+        """
+        Define the guide for the model.
+        """
+        NV = self.NV
+        K = self.K
+        D = NV.shape[1] # number of dimensions (samples)
+        weights_param = pyro.param("weights_param", lambda: self.init_weights, constraint=constraints.simplex)
+        pyro.sample("weights", dist.Delta(weights_param).to_event(1))
+
+        alpha_param = pyro.param("alpha_pareto_param", lambda: torch.ones((K,D))*self.alpha_pareto_init, constraint=constraints.interval(self.min_alpha, self.max_alpha))        
+
+        phi_beta_param = pyro.param("phi_beta_param", lambda: self.kmeans_centers, constraint=constraints.interval(self.phi_beta_L, self.phi_beta_H))
+        k_beta_param = pyro.param("k_beta_param", lambda: torch.ones((K,D))*self.k_beta_init, constraint=constraints.positive)
+        # k_beta_param = pyro.param("k_beta_param", lambda:self.init_kappas, constraint=constraints.positive)
+
+        probs_pareto_param = pyro.param("probs_pareto_param", lambda: torch.ones((K,D))*self.probs_pareto_init, constraint=constraints.interval(self.pareto_L, self.pareto_H))
+        
+        delta_param = pyro.param("delta_param", lambda: self.init_delta, constraint=constraints.simplex)
+        
+        with pyro.plate("plate_dims", D):
+            with pyro.plate("plate_probs", K):
+                alpha = pyro.sample("alpha_pareto", dist.Delta(alpha_param)) # here because we need to have K x D samples
+                
+                pyro.sample("phi_beta", dist.Delta(phi_beta_param))
+                pyro.sample("k_beta", dist.Delta(k_beta_param))
+
+                pyro.sample("probs_pareto", dist.Delta(probs_pareto_param))
+                pyro.sample("delta", dist.Delta(delta_param).to_event(1))
+                
+
+
+    def get_parameters(self):
+        """
+        Extract the learned parameters.
+        """
+        param_names = pyro.get_param_store()
+        params = {nms: pyro.param(nms) for nms in param_names}
+
+        new_keys = dict()
+        for key in params.keys():
+            if key.split(".")[0] == "AutoDelta":
+                new_keys[key] = key.replace("AutoDelta.","") + "_param"
+            else:
+                new_keys[key] = key
+
+        return dict((new_keys[key], value) for (key, value) in params.items())
+
+
+    def flatten_params(self, pars):
+        pars = list(flatten([value.detach().tolist() for key, value in pars.items()]))
+        
+        return(np.array(pars))
+
+    def _flatten_params_torch(self, pars):
+        """OPT: stay in torch to avoid numpy round-trip on every convergence check."""
+        return torch.cat([v.detach().flatten() for v in pars.values()])
+
+    def stopping_criteria(self, old_par, new_par, check_conv):
+        '''
+        The function adds +1 for each consecutive iteration where 
+        all parameter values change by less than the specified threshold 
+        compared to the previous iteration (relative difference).
+        OPT: uses pure torch to avoid per-iteration numpy conversion overhead.
+        '''
+        old = self._flatten_params_torch(old_par)
+        new = self._flatten_params_torch(new_par)
+        diff_mix = torch.abs(old - new) / torch.abs(old)
+        if torch.all(diff_mix < self.par_threshold):
+            return check_conv + 1
+        return 0
+
+    def get_parameters_stopping(self, params):
+        par = {'phi_beta_param': params["phi_beta_param"],
+               'k_beta_param': params["k_beta_param"],
+                'alpha_pareto_param': params['alpha_pareto_param'],
+                'delta_param': params['delta_param']} 
+        return par
+    
+    def loss_convergence(self):
+        old = self.losses[-2]
+        curr = self.losses[-1]
+        diff = np.abs(old - curr) / np.abs(old)
+        if diff < self.loss_threshold:
+            return True
+        else:
+            return False
+
+    # Model selection
+    def compute_BIC(self, params, final_lk):
+        # final_lk: K x N
+        n_params = self.calculate_number_of_params(params)
+        # print("n_params: ", n_params)
+        n = torch.tensor(self.NV.shape[0])
+        # print("n: ", n)
+        lk = self.log_sum_exp(final_lk).sum()
+        # print("lk: ", lk)
+        return torch.log(n) * n_params - torch.tensor(2.) * lk
+
+
+    def compute_entropy(self, params):
+        posts = params["responsib"]  # K x N
+        # OPT: vectorized over K; equivalent to original loop but without Python overhead
+        entropy = -torch.sum(posts * torch.log(posts + 1e-6))
+        return entropy
+
+
+    def compute_ICL(self, params, bic):
+        entropy = self.compute_entropy(params)
+        return bic + entropy
+
+
+    def run_inference(self, num_iter = 2000, lr = 0.001):
+        pyro.clear_param_store()
+        pyro.set_rng_seed(self.seed)
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
+        elbo = pyro.infer.TraceGraph_ELBO()
+        svi = pyro.infer.SVI(self.model, self.guide, pyro.optim.Adam({"lr": lr}), elbo)
+        min_loss = torch.tensor(float('inf'))
+        best_noise = torch.zeros([self.K, self.NV.shape[1]])
+        # for loop to sample different noise and see which gives the smaller loss
+        self.cluster_initialization(compute_kmeans = True)
+        for i in range(10):
+            pyro.clear_param_store()
+            mean = 0
+            std_dev = 0.005
+            D = self.NV.shape[1]
+            self.gaussian_noise = dist.Normal(mean, std_dev).sample([self.K, D])
+            # self.gaussian_noise = torch.zeros([self.K, D])
+            self.cluster_initialization(compute_kmeans = False)
+            loss = svi.step()
+            if loss < min_loss:
+                best_noise = self.gaussian_noise.clone()
+        
+        pyro.clear_param_store()
+        self.gaussian_noise = best_noise
+        self.cluster_initialization(compute_kmeans = False, final = True)
+        svi.step()
+        gradient_norms = defaultdict(list)
+        for name, value in pyro.get_param_store().named_parameters():
+            value.register_hook(
+                lambda g, name=name: gradient_norms[name].append(g.norm().item())
+            )
+        
+        self.losses = []
+        self.lks = []
+        self.params_stop_list = {}
+        i = 0
+        conv_iter = 200
+        check_conv = 0
+        params = self.get_parameters()
+        min_iter = 200
+        
+        for i in range(num_iter):
+            old_par = self.get_parameters_stopping(params) # Save current values of the parameters in old_params
+            for key in old_par:
+                if key in self.params_stop_list:
+                    self.params_stop_list[key].append(old_par[key])
+                else:
+                    self.params_stop_list[key] = [old_par[key]]
+
+            loss = svi.step()
+            self.losses.append(loss)
+            
+            params = self.get_parameters()
+
+            # OPT: skip expensive likelihood recomputation before min_iter
+            # (convergence is not checked there anyway); compute every 5 steps after that.
+            # To speedup a bit the computation of the likelihood (compute it every 5 iterations)
+            # if i < min_iter:
+            #     self.lks.append(self.lks[-1] if self.lks else float('nan'))
+            # elif i % 5 == 0 or i == min_iter:
+            #     a_beta = self.get_a_beta(params["phi_beta_param"], params["k_beta_param"])
+            #     b_beta = self.get_b_beta(params["phi_beta_param"], params["k_beta_param"])
+            #     probs_pareto = params["probs_pareto_param"] if "probs_pareto_param" in params.keys() else BoundedPareto(self.pareto_L, params["alpha_pareto_param"], self.pareto_H).sample()
+                
+            #     lks = self.log_sum_exp(self.m_total_lk(probs_pareto,
+            #                                            params["alpha_pareto_param"], a_beta, b_beta, 
+            #                                            params["weights_param"], params["delta_param"], which = 'inference')).sum()
+            #     self.lks.append(lks.detach().numpy())
+            # else:
+            #     self.lks.append(self.lks[-1])  # carry forward last value
+            
+            if i < min_iter:
+                self.lks.append(self.lks[-1] if self.lks else float('nan'))
+            else:
+                a_beta = self.get_a_beta(params["phi_beta_param"], params["k_beta_param"])
+                b_beta = self.get_b_beta(params["phi_beta_param"], params["k_beta_param"])
+                probs_pareto = params["probs_pareto_param"] if "probs_pareto_param" in params.keys() else BoundedPareto(self.pareto_L, params["alpha_pareto_param"], self.pareto_H).sample()
+
+                lks = self.log_sum_exp(self.m_total_lk(probs_pareto,
+                                                    params["alpha_pareto_param"], a_beta, b_beta, 
+                                                    params["weights_param"], params["delta_param"], which='inference')).sum()
+                self.lks.append(lks.detach().numpy())
+
+            if i >= min_iter:
+                new_par = self.get_parameters_stopping(params)
+                check_conv = self.stopping_criteria(old_par, new_par, check_conv)
+                conv_loss = self.loss_convergence()
+                # If convergence is reached (i.e. changes in parameters are small for min_iter iterations), stop the loop
+                if check_conv == conv_iter and conv_loss == True:
+                    break
+
+            if i % 50 == 0:
+                print("Iteration {}: Loss = {}".format(i, loss))
+
+        self.params = self.get_parameters()
+
+        # self.plot_loss_lks_dist()
+        # self.plot_grad_norms(gradient_norms)
+        
+        final_lk = self.compute_posteriors()
+        # print("Inference lk: ", self.lks[-1])
+        # print("Final lk: ", self.log_sum_exp(final_lk).sum())
+
+        bic = self.compute_BIC(self.params, final_lk)
+        icl = self.compute_ICL(self.params, bic)
+        print(f"ICL: {icl} \n")
+        
+        self.params['k_beta_param'] = self.params['k_beta_param'] + self.k_beta_L
+        self.params['scale_pareto'] =  self.pareto_L.numpy()
+        
+        # self.params = {k: v.detach().numpy() for k, v in self.params.items()}
+        self.params = {
+            k: v.detach().numpy() if isinstance(v, torch.Tensor) else v
+            for k, v in self.params.items()
+        }
+        
+        # Format data
+        NV_df = pd.DataFrame(self.NV.numpy())
+        NV_df.columns = [f"NV_{name}" for name in self.sample_names]
+        DP_df = pd.DataFrame(self.DP.numpy())
+        DP_df.columns = [f"NV_{name}" for name in self.sample_names]
+
+        params_stop_list_detached = {
+            key: [v.detach().clone() for v in val]
+            for key, val in self.params_stop_list.items()
+        }
+        
+        self.final_dict = {
+        "NV": self.NV.numpy(),
+        "DP": self.DP.numpy(),
+        "mutation_id": self.mut_id,
+        "model_parameters" : self.params,
+        "params_stop_list": params_stop_list_detached,
+        "cluster_id": self.cluster_assignments.numpy(),
+        "bic": bic,
+        "icl": icl,
+        "final_likelihood": self.log_sum_exp(final_lk).sum().detach().numpy(), 
+        "final_loss": self.losses[-1],
+        "likelihood_per_step": self.lks,
+        "loss_per_step": self.losses,
+        "gradient_norms": gradient_norms,
+        "n_components": self.K,
+        "used_components": self.final_K,
+        "seed": self.seed,
+        "sample_names": self.sample_names
+        }
+
+
+    def compute_final_lk(self, which):
+        """
+        Compute likelihood with learnt parameters
+        """
+        alpha = self.params["alpha_pareto_param"] 
+        delta = self.params["delta_param"]  # K x D x 2
+        
+        phi_beta = self.params["phi_beta_param"]
+        k_beta = self.params["k_beta_param"]
+        a_beta = self.get_a_beta(phi_beta, k_beta)
+        b_beta = self.get_b_beta(phi_beta, k_beta)
+        weights = self.params["weights_param"]
+        if which == 'inference':
+            probs_pareto = self.params["probs_pareto_param"] if "probs_pareto_param" in self.params.keys() else BoundedPareto(self.pareto_L, self.params["alpha_pareto_param"], self.pareto_H).sample()
+        else:
+            probs_pareto = None
+        lks = self.m_total_lk(probs_pareto = probs_pareto, alpha=alpha, a_beta=a_beta, b_beta=b_beta, 
+                               weights=weights, delta=delta, which = which) 
+
+        return lks
+
+    def compute_posteriors(self, which = 'posteriors'):
+        lks = self.compute_final_lk(which = which) # K x N
+        norm_fact = self.log_sum_exp(lks) # 1 x len(NV)
+        # OPT: vectorized over K instead of a Python loop
+        res = torch.exp(lks - norm_fact.unsqueeze(0))  # K x N via broadcasting
+        self.params["responsib"] = res
+        self.cluster_assignments = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
+        
+        
+        # Find empty components and remove them
+        counts = torch.bincount(self.cluster_assignments, minlength=self.K)  # Shape: (K,)
+        empty_components = torch.where(counts == 0)[0]  # Indices of empty components
+        
+
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", 
+                "delta_param", "weights_param", "probs_pareto_param"]
+        
+        if len(empty_components) > 0:
+            
+            # Remove empty components from responsibilities
+            mask = torch.ones(self.K, dtype=torch.bool)
+            mask[empty_components] = False
+            self.params["responsib"] = self.params["responsib"][mask]
+            
+            # Recompute cluster assignments with updated responsibilities
+            self.cluster_assignments = torch.argmax(self.params["responsib"], dim=0)
+            for key, _ in self.params.items():
+                if key in keys and isinstance(self.params[key], torch.Tensor) and self.params[key].shape[0] == self.K:
+                    self.params[key] = self.params[key][mask]  # Keep only non-empty rows
+
+            # Update the number of components
+            self.final_K = self.params["responsib"].shape[0]
+        else:
+            self.final_K = self.K
+        
+        return lks
+
+    def compute_euclidean_distance(self, t1, t2):
+        # Flatten tensors to vectors
+        t1_flat = t1.flatten()
+        t2_flat = t2.flatten()
+        return torch.norm(t1_flat - t2_flat).item()
+
+    def compute_max_relative_distance(self, old, new):
+        old_flat = old.flatten()
+        new_flat = new.flatten()
+        # Compute relative distances element-wise
+        diff_mix = torch.abs(new_flat - old_flat) / (torch.abs(old_flat))
+        # Return the maximum relative distance
+        return torch.max(diff_mix).item()
+    
+    def compute_mixing_distances(self, dictionary):
+        results = {}
+        for key, vector in dictionary.items():
+            distances = []
+            distances_euc = []
+            for i in range(1, len(vector)):
+                # Compute the maximum relative distance for consecutive parameter vectors
+                dist = self.compute_max_relative_distance(vector[i - 1], vector[i])
+                distances.append(dist)
+                dist_euc = self.compute_euclidean_distance(vector[i - 1], vector[i])
+                distances_euc.append(dist_euc)
+            # Store results for this key
+            results[key] = {
+                "max_relative_distances": distances,
+                "euclidean_distances": distances_euc,
+            }
+        return results
+
+    # MOVE THIS
+    def plot_grad_norms(self, gradient_norms):
+        plt.figure(figsize=(10, 4), dpi=100).set_facecolor("white")
+        for name, grad_norms in gradient_norms.items():
+            plt.plot(grad_norms, label=name)
+        plt.xlabel("iters")
+        plt.ylabel("gradient norm")
+        plt.yscale("log")
+        plt.legend(loc="best")
+        plt.title(f"Gradient norms during SVI (K = {self.K}, seed = {self.seed})")
+        if self.savefig:
+            plt.savefig(f"plots/{self.data_folder}/gradient_norms_K_{self.K}_seed_{self.seed}.png")
+        plt.show()
+        plt.close()
+    
+    def calculate_number_of_params(self, params):
+        keys = ["phi_beta_param", "k_beta_param", "alpha_pareto_param", "delta_param", "weights_param", "probs_pareto_param"]
+        total_params = 0
+        for key, param in params.items():
+            if key in keys:
+                param_size = np.prod(param.shape)  # Calculate the total number of elements
+                total_params += param_size
+        return total_params
