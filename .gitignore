@@ -38,4 +38,5 @@ run_model_parallel.py
 ._.DS_Store
 *.png
 .Rhistory
+.RData
 
