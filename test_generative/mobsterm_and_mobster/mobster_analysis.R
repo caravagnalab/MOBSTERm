@@ -79,6 +79,7 @@ if (!dir.exists(plot_viber_path)) {
 accuracy_values <- c()
 NMI_values <- c()
 NMI_values_complete <- c()
+times <- c()
 
 for (idx in 0:14){
   # idx = 6
@@ -143,6 +144,9 @@ for (idx in 0:14){
     final_df[[col]] = df$True_cluster
   }
   
+  ### Start mobster time ####
+  start_time <- Sys.time()
+  
   for (d in 1:D) {
     # print(NV[d])
     # d = 2
@@ -161,6 +165,9 @@ for (idx in 0:14){
     mobster:::template_parameters_fast_setup()
     
     # FIRST ADJUST FOR PURITY!!
+    
+    # MOBSTER FIT ####
+    
     fit = mobster_fit(
       vaf_mobster,
       auto_setup = "FAST",
@@ -232,7 +239,16 @@ for (idx in 0:14){
   
   colnames(DPs) = colnames(NVs) = paste0("S", 1:D)
   
+  # VIBER FIT ####
+  
   viber_fit = VIBER::variational_fit(x = NVs, y = DPs, samples = D, epsilon_conv = 1e-10, K = K)
+  
+  ### end time ####
+  end_time <- Sys.time()
+  elapsed_time <- as.numeric(difftime(end_time, start_time, units = "secs"))
+  
+  times <- c(times, elapsed_time)
+  
   # saveRDS(viber_fit, file = "./Set7/Set7_mobster_viber_fit.rds")
   # Plot a 3x2 figure -- raw fit (all clusters)
   if (D == 4){
@@ -294,3 +310,32 @@ for (idx in 0:14){
 
 write.csv(data.frame(accuracy = accuracy_values), paste0(accuracy_path, "N_", N, "_K_", K, "_D_", D, ".csv"), row.names = FALSE)
 write.csv(data.frame(NMI = NMI_values_complete), paste0(NMI_path, "N_", N, "_K_", K, "_D_", D, ".csv"), row.names = FALSE)
+
+
+
+
+if (p == 1){
+  dir_path <- file.path(
+    './results/times_csv/mobster_viber',
+    paste0("p_", gsub("\\.", "", as.character(p)), "0_cov_", cov),
+    paste0("D_", D)
+  )  
+}else{
+  dir_path <- file.path(
+    './results/times_csv/mobster_viber',
+    paste0("p_", gsub("\\.", "", as.character(p)), "_cov_", cov),
+    paste0("D_", D)
+  )
+}
+
+filename <- file.path(
+  dir_path,
+  paste0("N_", N, "_K_", K, "_D_", D, ".csv")
+)
+
+if (!dir.exists(dir_path)) {
+  dir.create(dir_path, recursive = TRUE)
+}
+
+write.csv(data.frame(time = times), filename)
+

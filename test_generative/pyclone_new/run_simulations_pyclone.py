@@ -19,6 +19,8 @@ import json
 import argparse
 from natsort import natsorted
 import re
+import time
+import ast
 
 import sys
 import os
@@ -52,12 +54,13 @@ if __name__ == "__main__":
 
     create_folder(N,K,D,purity[0],coverage)
     
-
+    time_list = []
     nmi_list = []
     ari_list = []
     nmi_list_init = []
     ari_list_init = []
     conf_matrix_list = []
+    
     seed = 0
     for idx in range(num_dataset):
         seed1 = seed+idx+K+N
@@ -99,8 +102,19 @@ if __name__ == "__main__":
             max_K = 10
         else:
             max_K = 2*K 
+        
+        start_time = time.time()
+
         sb.call('pyclone-vi fit -i '+data_path+' -o '+fit_path+' -c '+  str(max_K) + ' -d beta-binomial -r 10', shell = True)
+        
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"Time taken for the fit function: {elapsed_time:.2f} seconds")
+
+        time_list.append(elapsed_time)
+
         sb.call('pyclone-vi write-results-file -i '+fit_path+' -o '+best_fit_path, shell = True)
+
 
         fit = pd.read_csv(best_fit_path, sep='\t')
         data['sample_id'] = data['sample_id'].astype(str)
@@ -165,6 +179,13 @@ if __name__ == "__main__":
         ari = adjusted_rand_score(true_labels, predicted_labels)
         ari_list.append(ari)
 
+
+    filename = f"times_csv/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/N_{N}_K_{K}_D_{D}.csv"
+    if not os.path.exists(f"times_csv/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/"):
+        os.makedirs(f"times_csv/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/")
+    with open(filename, "w") as file:
+        for item in time_list:
+            file.write(f"{item}\n")  # Writing each item on a new line   
 
     filename = f"results/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/nmi/nmi_N_{N}_K_{K}_D_{D}.txt"
     with open(filename, "w") as file:

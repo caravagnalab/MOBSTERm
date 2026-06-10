@@ -10,6 +10,7 @@ test_generative/pyclone_new/saved_objects/
 test_generative/pyclone_new/plots/
 test_generative/pyclone_new/out_files/
 test_generative/pyclone_new/results/
+test_generative/pyclone_new/save_times_pyclone.py
 
 test_generative/mobsterm_and_mobster/saved_objects/
 test_generative/mobsterm_and_mobster/plots/
@@ -25,6 +26,7 @@ run_gbm.py
 run_multiple_hitchhiker.py
 run_multiple_hitchhiker_pyclone.py
 test_pyclone.ipynb
+run_model_parallel.py
 
 *.out
 ._*
