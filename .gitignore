@@ -26,7 +26,10 @@ run_gbm.py
 run_multiple_hitchhiker.py
 run_multiple_hitchhiker_pyclone.py
 test_pyclone.ipynb
+test_pyclone_gbm.ipynb
+run_gbm_pyclone.py
 run_model_parallel.py
+pyclone_set7.ipynb
 
 *.out
 ._*
