@@ -32,3 +32,8 @@ run_multiple_hitchhiker_pyclone.py
 test_pyclone.ipynb
 run_model_parallel.py
 data/real_data/
+mobster_viber_gbm.R
+mobster_viber_set7.R
+pyclone_set7.ipynb
+run_gbm_pyclone.py
+test_pyclone_gbm.ipynb

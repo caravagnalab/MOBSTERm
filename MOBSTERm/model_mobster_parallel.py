@@ -93,10 +93,12 @@ def fit(NV=None, DP=None, mut_id=None, num_iter=2000, K=[],
             mb_final = mb_best_seed
 
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
-    mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
+    # mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
+    all_runs_ordered = sorted(results, key=lambda d: (d["n_components"], d["seed"]))
     return {
         "best_fit": mb_final,
-        "runs": mb_list_ordered  # mb_list contains the best seed for each K
+        "all_runs": all_runs_ordered   # "all_runs" - every (K, seed) combination
+        # "runs": mb_list_ordered  # mb_list contains the best seed for each K
     }
 
 
