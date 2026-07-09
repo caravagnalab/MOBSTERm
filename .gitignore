@@ -30,6 +30,8 @@ test_pyclone_gbm.ipynb
 run_gbm_pyclone.py
 run_model_parallel.py
 pyclone_set7.ipynb
+mobster_viber_gbm.R
+mobster_viber_set7.R
 
 *.out
 ._*
