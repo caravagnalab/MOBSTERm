@@ -617,7 +617,7 @@ def plot_scatter_inference(mb, save_folder=None):
 def plot_loss_lks_dist(fit_dict, par_threshold=0.005, save_folder = None):
     """
     Plot loss, likelihood and parameter distances from a fit dictionary
-    (e.g. mb['best_fit'] or any element of mb['runs']).
+    (e.g. mb['best_fit'] or any element of mb['all_runs']).
     """
     K       = fit_dict['n_components']
     seed    = fit_dict['seed']
@@ -698,8 +698,8 @@ def plot_bic_icl(mb, save_folder=None):
             return x.detach().item()
         return x
 
-    runs = mb['runs']
-    runs = sorted(mb['runs'], key=lambda r: r['n_components'])
+    runs = mb['all_runs']
+    runs = sorted(mb['all_runs'], key=lambda r: r['n_components'])
     
     ks   = [r['n_components'] for r in runs]
     bics = [to_scalar(r['bic']) for r in runs]
