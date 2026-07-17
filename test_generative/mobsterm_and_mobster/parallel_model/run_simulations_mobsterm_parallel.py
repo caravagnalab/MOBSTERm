@@ -45,8 +45,8 @@ if __name__ == "__main__":
     num_iter = 2000
     num_dataset = 15
 
-    # num_iter = 10
-    # num_dataset = 5
+    # num_iter = 5
+    # num_dataset = 2
 
     args = parser.parse_args()
     N = args.N  # number of mutations
@@ -115,7 +115,8 @@ if __name__ == "__main__":
         else:
             K_list = [K - 1, K, K + 1, K + 2, K + 3]
         
-        seed_list = [40,41]
+        # seed_list = [40,41]
+        seed_list = [40,41,42]
         
         start_time = time.time()
 
@@ -133,26 +134,31 @@ if __name__ == "__main__":
 
         time_list.append(elapsed_time)
 
-        save_folder = f"p_{p_str}_cov_{coverage}/D_{D}/K_{K}"
+        save_folder = f"p_{p_str}_cov_{coverage}/D_{D}/K_{K}/N_{N}"
 
         save_results(mb, idx, save_folder = save_folder)
         save_results(mb['best_fit'], idx, save_folder = f"{save_folder}/best")
-        plot_bic_icl(mb, idx, save_folder = save_folder)
+        # plot_bic_icl(mb, idx, save_folder = save_folder)
 
         plot_scatter_inference(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
         plot_marginals_inference(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
-        plot_marginals_single(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
-        plot_deltas(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
-        plot_responsib(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
-        plot_mixing_proportions(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
-        plot_loss_lks_dist(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+        # plot_marginals_single(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+        # plot_deltas(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+        # plot_responsib(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+        # plot_mixing_proportions(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+        # plot_loss_lks_dist(mb['best_fit'], idx, save_folder= f"{save_folder}/best")
+
+        # save_folder = f'p_{p_str}_cov_{coverage}/D_{D}/K_{K}/N_{N}'
+        
+        # save_results(mb, save_folder = save_folder)
+   
     
-    time_folder = '../results/times_csv/mobsterm'
+    # time_folder = '../results/times_csv/mobsterm'
     
-    filename = f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/N_{N}_K_{K}_D_{D}.csv"
-    if not os.path.exists(f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/"):
-            os.makedirs(f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/")
+    # filename = f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/N_{N}_K_{K}_D_{D}.csv"
+    # if not os.path.exists(f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/"):
+    #         os.makedirs(f"{time_folder}/p_{str(purity[0]).replace('.', '')}_cov_{coverage}/D_{D}/")
     
-    with open(filename, "w") as file:
-        for item in time_list:
-            file.write(f"{item}\n")  # Writing each item on a new line   
+    # with open(filename, "w") as file:
+    #     for item in time_list:
+    #         file.write(f"{item}\n")  # Writing each item on a new line   

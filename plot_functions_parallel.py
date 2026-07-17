@@ -6,7 +6,6 @@ import torch
 
 import matplotlib.pyplot as plt
 from scipy.stats import beta, pareto
-from BoundedPareto import BoundedPareto
 import seaborn as sns
 import matplotlib.cm as cm
 import pandas as pd
@@ -22,7 +21,7 @@ colors = [
     "#000075", "#808080", "#d3a6f3", "#ff9cdd", "#73d7b0"  
     ]
 
-def plot_deltas(mb, idx, save_folder = None):
+def plot_deltas(mb, save_folder = None):
     deltas = mb['model_parameters']["delta_param"]
     K = deltas.shape[0]
     if deltas.shape[0] == 1:
@@ -70,13 +69,13 @@ def plot_deltas(mb, idx, save_folder = None):
     fig.colorbar(sm, cax=cbar_ax)
     seed = mb['seed']
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_deltas_K_{mb['n_components']}_seed_{seed}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/deltas_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
-def plot_responsib(mb, idx, save_folder = None):
+def plot_responsib(mb, save_folder = None):
     if torch.is_tensor(mb['model_parameters']['responsib']):
         resp = mb['model_parameters']['responsib']
     else:
@@ -88,9 +87,9 @@ def plot_responsib(mb, idx, save_folder = None):
     sns.heatmap(resp, ax=ax, vmin=0, vmax=1, cmap="crest")
     seed = mb['seed']
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_responsibilities_K_{mb['n_components']}_seed_{seed}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/responsibilities_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
@@ -123,9 +122,9 @@ def plot_paretos(mb, save_folder = None):
                 ax[k,d].set_title(f"Sample {d+1} Cluster {k} - alpha {round(float(alpha_pareto[k,d]), ndigits=2)}", fontsize=10)
     seed = mb['seed']
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/paretos_K_{mb['n_components']}_seed_{seed}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/paretos_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
@@ -150,13 +149,13 @@ def plot_betas(mb, save_folder = None):
     seed = mb['seed']
 
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/betas_K_{mb['n_components']}_seed_{seed}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/betas_K_{mb['n_components']}_seed_{seed}.png")
     plt.show()
     plt.close()
 
-def plot_marginals_single_nd(mb, idx, save_folder = None):
+def plot_marginals_single_nd(mb, save_folder = None):
     a_beta_zeros = torch.tensor(1e-4)
     b_beta_zeros = torch.tensor(1e4)
     delta = mb['model_parameters']["delta_param"]  # K x D x 2
@@ -253,14 +252,14 @@ def plot_marginals_single_nd(mb, idx, save_folder = None):
             axes[k,d].set_xlim([-0.01,0.7])
             plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
 
-def plot_marginals_single_1d(mb, idx, save_folder= None):
+def plot_marginals_single_1d(mb, save_folder= None):
     a_beta_zeros = torch.tensor(1e-4)
     b_beta_zeros = torch.tensor(1e4)
     delta = mb['model_parameters']["delta_param"]  # K x D x 2
@@ -356,22 +355,22 @@ def plot_marginals_single_1d(mb, idx, save_folder= None):
         axes[k].set_xlim([-0.01,0.7])
         plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
 
-def plot_marginals_single(mb, idx, save_folder = None):
+def plot_marginals_single(mb, save_folder = None):
     D = mb['NV'].shape[1]
     if D == 1:
-        plot_marginals_single_1d(mb, idx, save_folder = save_folder)
+        plot_marginals_single_1d(mb, save_folder = save_folder)
     else:
-        plot_marginals_single_nd(mb, idx, save_folder = save_folder)
+        plot_marginals_single_nd(mb, save_folder = save_folder)
        
 
-def plot_mixing_proportions(mb, idx, save_folder=None):
+def plot_mixing_proportions(mb, save_folder=None):
     weights = mb['model_parameters']["weights_param"]
     if torch.is_tensor(weights):
         weights = weights
@@ -437,14 +436,14 @@ def plot_mixing_proportions(mb, idx, save_folder=None):
     plt.tight_layout()
 
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_mixing_proportions_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/mixing_proportions_{mb['n_components']}_seed_{mb['seed']}.png")
     else:
         plt.show()
     plt.close()
 
-def plot_marginals_inference_nd(mb, D, idx, save_folder = None):
+def plot_marginals_inference_nd(mb, D, save_folder = None):
     pairs = np.triu_indices(D, k=1)  # Generate all unique pairs of samples (i, j)
     vaf = (mb['NV'] / mb['DP'])#/purity
     
@@ -489,13 +488,13 @@ def plot_marginals_inference_nd(mb, D, idx, save_folder = None):
     
     plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
-def plot_marginals_inference_1d(mb, D, idx,save_folder = None):
+def plot_marginals_inference_1d(mb, D, save_folder = None):
     vaf = (mb['NV'] / mb['DP'])
 
 
@@ -533,20 +532,20 @@ def plot_marginals_inference_1d(mb, D, idx,save_folder = None):
     
     plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/inference_marginals_K_{mb['n_components']}_seed_{mb['seed']}.png")
     plt.show()
     plt.close()
 
-def plot_marginals_inference(mb, idx, save_folder=None):
+def plot_marginals_inference(mb, save_folder=None):
     D = mb['NV'].shape[1]
     if D == 1:
-        plot_marginals_inference_1d(mb, D, idx, save_folder = save_folder)
+        plot_marginals_inference_1d(mb, D, save_folder=None)
     else:
-        plot_marginals_inference_nd(mb, D, idx, save_folder = save_folder)
+        plot_marginals_inference_nd(mb, D, save_folder=None)
         
-def plot_scatter_inference(mb, idx, save_folder=None):
+def plot_scatter_inference(mb, save_folder=None):
     """
     Plot the results.
     """
@@ -606,18 +605,18 @@ def plot_scatter_inference(mb, idx, save_folder=None):
 
         plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_inference_K_{mb['n_components']}_seed_{mb['seed']}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/inference_K_{mb['n_components']}_seed_{mb['seed']}.png")
 
     plt.show()
     plt.close()
 
 
-def plot_loss_lks_dist(fit_dict, idx, par_threshold=0.005, save_folder = None):
+def plot_loss_lks_dist(fit_dict, par_threshold=0.005, save_folder = None):
     """
     Plot loss, likelihood and parameter distances from a fit dictionary
-    (e.g. mb['best_fit'] or any element of mb['runs']).
+    (e.g. mb['best_fit'] or any element of mb['all_runs']).
     """
     K       = fit_dict['n_components']
     seed    = fit_dict['seed']
@@ -682,13 +681,13 @@ def plot_loss_lks_dist(fit_dict, idx, par_threshold=0.005, save_folder = None):
     ax[1,1].legend()
 
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_loss_likelihood_K_{K}_seed_{seed}.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/loss_likelihood_K_{K}_seed_{seed}.png")
     plt.show()
     plt.close()
 
-def plot_bic_icl(mb, idx, save_folder=None):
+def plot_bic_icl(mb, save_folder=None):
     """
     Plot BIC and ICL for all fits (best seed per K), 
     highlighting the best (lowest) value with a red dot.
@@ -698,8 +697,8 @@ def plot_bic_icl(mb, idx, save_folder=None):
             return x.detach().item()
         return x
 
-    runs = mb['runs']
-    runs = sorted(mb['runs'], key=lambda r: r['n_components'])
+    runs = mb['all_runs']
+    runs = sorted(mb['all_runs'], key=lambda r: r['n_components'])
     
     ks   = [r['n_components'] for r in runs]
     bics = [to_scalar(r['bic']) for r in runs]
@@ -735,20 +734,19 @@ def plot_bic_icl(mb, idx, save_folder=None):
     
     plt.tight_layout()
     if save_folder is not None:
-        if not os.path.exists(f"./plots/{save_folder}"):
-            os.makedirs(f"./plots/{save_folder}")
-        plt.savefig(f"./plots/{save_folder}/{idx}_model_selection.png")
+        if not os.path.exists(f"plots/{save_folder}"):
+            os.makedirs(f"plots/{save_folder}")
+        plt.savefig(f"plots/{save_folder}/model_selection.png")
     plt.show()
     plt.close()
 
-def save_results(mb, idx, save_folder):
+def save_results(mb, save_folder):
     import os
-    if not os.path.exists(f"./results/{save_folder}"):
-        print('Create folder')
-        os.makedirs(f"./results/{save_folder}")
+    if not os.path.exists(f"results/{save_folder}"):
+        os.makedirs(f"results/{save_folder}")
 
     # save
-    with open(f"./results/{save_folder}/{idx}_fit_results.pkl", "wb") as f:
+    with open(f"results/{save_folder}/fit_results.pkl", "wb") as f:
         pickle.dump(mb, f)
 
     # To then open it

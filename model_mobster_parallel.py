@@ -13,11 +13,12 @@ from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 # from sklearn.cluster import KMeans
-from BoundedPareto import BoundedPareto
 
 from collections import defaultdict
 from pandas.core.common import flatten
+
 from plot_functions_parallel import *
+from utils.BoundedPareto import BoundedPareto
 
 
 def _run_single_fit(args):
@@ -93,11 +94,11 @@ def fit(NV=None, DP=None, mut_id=None, num_iter=2000, K=[],
             mb_final = mb_best_seed
 
     print(f"Selected number of clusters is {best_K} with seed {best_total_seed}")
-    mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
+    # mb_list_ordered = sorted(mb_list, key=lambda d: d["icl"])
     all_runs_ordered = sorted(results, key=lambda d: (d["n_components"], d["seed"]))
     return {
         "best_fit": mb_final,
-        "runs": all_runs_ordered   # "all_runs" - every (K, seed) combination
+        "all_runs": all_runs_ordered   # "all_runs" - every (K, seed) combination
         # "runs": mb_list_ordered  # mb_list contains the best seed for each K
     }
 
@@ -515,6 +516,7 @@ class mobster_MV():
 
     def compute_max_pareto(self):
         max_vaf = torch.tensor([1 / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        # max_vaf = 0.45
         return max_vaf * self.purity # tensor D x 1
 
 

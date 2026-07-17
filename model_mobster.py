@@ -42,7 +42,9 @@ def convert_to_list(item):
         return item
 
 
-def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None):
+def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, mut_id = None,
+        kr = None, seed=[123,1234], par_threshold = 0.005, loss_threshold = 0.01, 
+        lr = 0.01, savefig = False, data_folder = None):
     """
     Function to run the inference with different values of K
     """
@@ -66,7 +68,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, s
             for curr_seed in seed:
                 print(f"RUN WITH K = {curr_k} AND SEED = {curr_seed}")
                 start_time = time.time()
-                curr_mb.append(mobster_MV(NV, DP, K = curr_k, purity = purity, kr = kr,
+                curr_mb.append(mobster_MV(NV, DP, K = curr_k, mut_id = mut_id, purity = purity, kr = kr,
                                             seed = curr_seed, par_threshold = par_threshold,
                                             loss_threshold = loss_threshold, savefig = savefig, 
                                             data_folder = data_folder))
@@ -118,7 +120,7 @@ def fit(NV = None, DP = None, num_iter = 2000, K = [], purity=None, kr = None, s
 
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, K = 1, purity=None, kr = None, seed=[123,1234], 
+    def __init__(self, NV = None, DP = None, K = 1, mut_id = None, purity=None, kr = None, seed=[123,1234], 
                     par_threshold = 0.005, loss_threshold = 0.01, savefig = False, data_folder = None):
         """
         Parameters:
@@ -171,6 +173,10 @@ class mobster_MV():
                 self.kr = ['1:1']*NV.shape[1]
             self.set_prior_parameters()
         
+        if mut_id is not None:
+                if not isinstance(mut_id, list): # if it is not a list
+                    mut_id = list(mut_id)
+                self.mut_id = np.array(mut_id)[self.valid_indexes].tolist()
         # vaf = NV.numpy()/DP.numpy()
         # self.idx = np.where((vaf[:,0] >= 0.03) & (vaf[:,0] < 0.2) & (vaf[:,1] == 0))[0]
     
@@ -324,7 +330,7 @@ class mobster_MV():
         # Plot kmeans result scatter
         plt.figure()
         unique_labels = np.unique(self.kmeans_labels)
-        cmap = cm.get_cmap('tab20')
+        cmap = plt.get_cmap('tab20')
         color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
         colors = [color_mapping[label] for label in self.kmeans_labels.detach().numpy()]
 
@@ -358,7 +364,7 @@ class mobster_MV():
         plt.suptitle(f"GMM marginals with K={self.K}, seed={self.seed}",fontsize=14)
         x = np.linspace(0.001, 1, 1000)
 
-        cmap = cm.get_cmap('tab20')
+        cmap = plt.get_cmap('tab20')
         color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
         phi = self.kmeans_centers
         for k in range(self.K):
@@ -590,6 +596,8 @@ class mobster_MV():
 
     def compute_max_pareto(self):
         max_vaf = torch.tensor([1 / (int(nA) + int(nB)) for s in self.kr for nA, nB in [s.split(':')]])
+        # max_vaf = 0.45
+        # max_vaf = 0.5
         return max_vaf * self.purity # tensor D x 1
 
 
@@ -986,9 +994,11 @@ class mobster_MV():
         for k in range(len(res)): # iterate over the clusters
             lks_k = lks[k] # take row k -> array of size len(NV)
             res[k] = torch.exp(lks_k - norm_fact)
+        
         self.params["responsib"] = res # qui non dovrebbe cambiare niente per le private perchè i punti sono già sommati sulle dimensioni
         self.params["cluster_assignments"] = torch.argmax(self.params["responsib"], dim = 0) # vector of dimension
-        """"""
+        
+        
         # Find empty components and remove them
         counts = torch.bincount(self.params["cluster_assignments"], minlength=self.K)  # Shape: (K,)
         empty_components = torch.where(counts == 0)[0]  # Indices of empty components
@@ -1137,7 +1147,7 @@ class mobster_MV():
         weights = self.params["weights_param"].detach().numpy()
         unique_labels = np.unique(self.params["cluster_assignments"].detach().numpy())
         labels = self.params["cluster_assignments"].detach().numpy()
-        cmap = cm.get_cmap('tab20')
+        cmap = plt.get_cmap('tab20')
         color_mapping = {label: cmap(i) for i, label in enumerate(unique_labels)}
         colors = [color_mapping[label] for label in labels]
 
