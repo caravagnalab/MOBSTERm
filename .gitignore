@@ -37,3 +37,4 @@ mobster_viber_set7.R
 pyclone_set7.ipynb
 run_gbm_pyclone.py
 test_pyclone_gbm.ipynb
+run_model.py
