@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import pandas as pd
 from itertools import combinations
+import pickle
+import os
 
 from .aux_functions import *
 
