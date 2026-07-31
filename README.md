@@ -1,41 +1,49 @@
-# MOBSTERm
-`MOBSTERm` is a package that implements a Bayesian model to perform multivariate subclonal deconvolution, allowing to detect neutral, private and selected clonal mutations in multi-region and longitudinal cancer datasets.
+- # MOBSTERm
+  `MOBSTERm` is a Python package implementing a Bayesian model to perform multivariate subclonal deconvolution, allowing to detect neutral, private and selected clonal mutations in multi-region and longitudinal cancer datasets. The package also provides also a command-line interface.
 
-### To install
-`pip install MOBSTERm`
+  ### To install
+  `pip install MOBSTERm`
 
-or 
+  or 
 
-`git clone https://github.com/caravagnalab/MOBSTERm.git`
+  `pip install git+https://github.com/caravagnalab/MOBSTERm.git`
 
-### Input data
-MOBSTERm requires the following input:
+  
 
-- `NV` (`torch.Tensor`): Number of variant reads for each mutation (shape: `[num_mutations, num_samples]`).
+  #### Command-Line Interface
 
-- `DP` (`torch.Tensor`): Total read depth for each mutation (shape: `[num_mutations, num_samples]`).
+  The package installs a command-line tool named `MOBSTERm`. This tool takes as input a CSV file reporting, for each relevant mutation and for each sample,  the variant allele count (*NV*) and the total depth (*DP*) and clusterizes the mutations. The resulting clusters are saved in CSV files.
 
-- `mut_id` (`list` or `array`): Unique identifiers for each mutation.
+  
 
-- `num_iter` (`int`, default=`2000`): Number of SVI iterations for model fitting.
+  For an example of usage, download the file [`test_data.csv`](https://raw.githubusercontent.com/albertocasagrande/MOBSTERm/refs/heads/main/data/test_data.csv) from the GitHub repository, and, in the download directory, use the command. 
 
-- `K` (`list`, default=`[]`): List of cluster numbers to consider (e.g., `[2,3,4]`).
+  ```{bash}
+   MOBSTERm test_data.csv deconvolution.csv
+  ```
 
-- `purity` (`list`, default=`[1.,1., ...]`): Purity of the sample(s). It has to be one per sample.
+  This command will produce the CSV file `deconvolution.csv` reporting the cluster identifier of each mutation.
 
-- `kr` (`list`, default=`[1:1,1:1, 1:1, ...]`): Karyotype of the sample(s). It has to be one per sample (e.g., `[1:1,2:1]`).
+  Notice that only the columns "`mutation_id`", "`<Sample name>.NV`", and "`<Sample name>.DP`" are used during by `MOBSTERm`. The other columns are ignored. 
 
-- `seed_list` (`list`, default=`[123,1234]`): List of random seeds for reproducibility.
+  To get a list of the options, use the option `-h`. 
 
-- `par_threshold` (`float`, default=`0.005`): Tolerance for parameter convergence. As ELBO oscillations are common in gradient based VI, we will monitor the convergence of all the parameters in the model, the inference stops when (abs(new-old) / abs(old)) < par_threshold for 200 consecutive iterations, for all the parameters.
+  ```{bash}
+  MOBSTERm -h
+  ```
 
-- `loss_threshold` (`float`, default=`0.01`): Tolerance for loss convergence. As ELBO oscillations are common in gradient based VI we will monitor the convergence of the loss in the model, the inference stops when (abs(new_loss-old_loss) / abs(old_loss)) < loss_threshold for 200 consecutive iterations.
+-----
 
-- `lr` (`float`, default=0.01): Learning rate for optimization.
+#### Copyright and contacts
 
-- `sample_names` (`list`, default=None): Names of the samples. If None, default names `sample1, sample2, ...` are used.
+- Elena Rivaroli, Cancer Data Science (CDS) Laboratory.
 
-#### Notes
-- If `sample_names`, `purity` and `kr` are provided, their lengths must match the number of samples (`NV.shape[1]`).
+[![CaravagnaLab GitHub](https://img.shields.io/badge/CDS%20Lab%20Github-caravagnalab-seagreen.svg)](https://github.com/caravagnalab/)
 
-- The function assumes NV and DP have the same shape (`N x D`, where `N` is the number of mutations and `D` is the number of samples).
+  
+
+  
+
+  
+
+  
