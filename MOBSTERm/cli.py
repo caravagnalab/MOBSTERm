@@ -194,9 +194,9 @@ class AppManager(object):
         parser.add_argument('-L', '--log-filename', dest='log_filename',
                             type=str, default="",
                             help='The log output filename')
-        parser.add_argument('-P', '--generate-plots', dest='generate_plots',
+        parser.add_argument('-P', '--generate-plots', dest='plot_images',
                             help='Generate plot images',
-                            action=PlotImageAction)
+                            action='store_true')
         parser.add_argument('-d', '--dpi', dest='dpi',
                             type=float, default=300,
                             help='Image DPI (default: 300)',
@@ -327,7 +327,7 @@ class AppManager(object):
         if args.log_filename != "":
             AppManager._save_log_data(best_fit, args.log_filename)
 
-        if getattr(args, 'plot_image', True):
+        if args.plot_images:
             save_images(mb, args.image_dir, args.image_type, args.dpi)
 
 def main():
