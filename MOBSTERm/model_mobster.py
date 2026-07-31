@@ -108,12 +108,67 @@ def handle_progress_bars(K, seed_list, num_iter, progress_queue):
                 # Update the specific progress bar associated with this worker
                 progress.advance(task_ids[worker_id], advance=advance_by)
 
-def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
-        purity=None, kr = None, seed_list=[123,1234], par_threshold = 0.005,
+def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
+        purity = None, kr = None, seed_list=[123,1234], par_threshold = 0.005,
         loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None,
         sample_names = None, quiet = False, num_of_threads = 1):
-    """
-    Function to run the inference with different values of K
+    """Fit the variational inference model to subclonal deconvolution data.
+
+    Parameters
+    ----------
+    NV : numpy.ndarray
+        A numpy array containing the variant allele count (NV) for each sample.
+        It has size `N x D`, where `N` is the number of mutations and `D` is the
+        number of samples.
+    DP : numpy.ndarray
+        A numpy array containing the total depth (DP) for each sample. It
+        has size `N x D`, where `N` is the number of mutations and `D` is the
+        number of samples.
+    mut_id : list of str, optional
+        Identifiers for each mutation.
+    num_iter : int, default=2000
+        Maximum number of iterations for inference.
+    K : list of int, default=[]
+        Number of clonal/subclonal clusters.
+    purity : list of float, optional
+        List of previously estimated purities of the tumor samples. When provided,
+        its length must match the number of samples (`NV.shape[1]`).
+    kr : list of str, optional
+        List of karyotypes of the samples in the form 'major_allele:minor_allele'
+        (e.g., ['1:1', '2:1']). Defaults to ['1:1', ...] per sample if None.
+        When provided, its length must match the number of samples (`NV.shape[1]`).
+    seed_list : list of int, default=[123, 1234]
+        List of random seeds for reproducibility.
+    par_threshold : float, default=0.005
+        Tolerance for parameter convergence. As ELBO oscillations are common in
+        gradient-based VI, parameter convergence is monitored. Inference stops when
+        `abs(new - old) / abs(old) < par_threshold` for 200 consecutive iterations
+        across all parameters.
+    loss_threshold : float, default=0.01
+        Tolerance for loss convergence. Inference stops when
+        `abs(new_loss - old_loss) / abs(old_loss) < loss_threshold` for 200 consecutive
+        iterations.
+    lr : float, default=0.01
+        Learning rate for optimization.
+    savefig : bool, default=False
+        If True, saves output figures to the specified data folder.
+    data_folder : str, optional
+        Path to the directory where results or figures should be saved.
+    sample_names : list of str, optional
+        Names of the samples. If `None`, default names ('sample1', 'sample2', ...)
+        are assigned. When provided, its length must match the number of samples
+        (`NV.shape[1]`).
+    quiet : bool, default=False
+        If True, suppresses progress logs and output messages.
+    num_of_threads : int, default=1
+        Number of parallel threads to use during computation.
+
+    Returns
+    -------
+    dict
+        A dictionary whose keys are `best_fit` and `runs` are reporting the
+        best fit for the passed parameters and the list of the possible results
+        ordered according to the parameter matching.
     """
 
     for k in K:
@@ -142,6 +197,9 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
 
     share_memory_object(NV)
     share_memory_object(DP)
+
+    if num_of_threads == -1:
+        num_of_threads = mp.cpu_count()
 
     num_of_threads = min(num_of_threads, len(K)*len(seed_list))
     process_semaphore = mp.Semaphore(num_of_threads)
@@ -179,22 +237,56 @@ def fit(NV = None, DP = None, mut_id = None, num_iter = 2000, K = [],
     }
 
 class mobster_MV():
-    def __init__(self, NV = None, DP = None, mut_id = None, K = 1, purity=None,
-                 kr = None, seed=1234, par_threshold = 0.005,
-                 loss_threshold = 0.01, savefig = False, data_folder = None,
-                 sample_names = None, progress_queue = None, worker_id = 0):
-        """
-        Parameters:
-            NV : numpy array
-                A numpy array containing the NV for each sample -> NV : [NV_s1, NV_s2, ..., NV_sn]
-            DP : numpy array
-                A numpy array containing the DP for each sample -> DP : [DP_s1, DP_s2, ..., DP_sn]
-            K : int
-                Number of clonal/subclonal clusters
-            purity: list of float
-                List of previously estimated purities of the tumor samples.
-            kr: list of str
-                List of the karyotypes of the samples in the form major_allele:minor_allele.
+    def __init__(self, NV, DP, mut_id, K, purity,
+                 kr, seed, par_threshold,
+                 loss_threshold, savefig, data_folder,
+                 sample_names, progress_queue, worker_id):
+        """ A class representing the stochastic model
+
+        Parameters
+        ----------
+        NV : numpy.ndarray
+            A numpy array containing the variant allele count (NV) for each sample.
+            It has size `N x D`, where `N` is the number of mutations and `D` is the
+            number of samples.
+        DP : numpy.ndarray
+            A numpy array containing the total depth (DP) for each sample. It
+            has size `N x D`, where `N` is the number of mutations and `D` is the
+            number of samples.
+        mut_id : list of str
+            Identifiers for each mutation.
+        K : int
+            Number of clonal/subclonal clusters.
+        purity : list of float
+            List of previously estimated purities of the tumor samples. When provided,
+            its length must match the number of samples (`NV.shape[1]`).
+        kr : list of str
+            List of karyotypes of the samples in the form 'major_allele:minor_allele'
+            (e.g., ['1:1', '2:1']). Defaults to ['1:1', ...] per sample if None.
+            When provided, its length must match the number of samples (`NV.shape[1]`).
+        seed : int
+            The random seed.
+        par_threshold : float
+            Tolerance for parameter convergence. As ELBO oscillations are common in
+            gradient-based VI, parameter convergence is monitored. Inference stops when
+            `abs(new - old) / abs(old) < par_threshold` for 200 consecutive iterations
+            across all parameters.
+        loss_threshold : float, default=0.01
+            Tolerance for loss convergence. Inference stops when
+            `abs(new_loss - old_loss) / abs(old_loss) < loss_threshold` for 200 consecutive
+            iterations.
+        savefig : bool
+            If True, saves output figures to the specified data folder.
+        data_folder : str
+            Path to the directory where results or figures should be saved.
+        sample_names : list of str
+            Names of the samples. If `None`, default names ('sample1', 'sample2', ...)
+            are assigned. When provided, its length must match the number of samples
+            (`NV.shape[1]`).
+        progress_queue : multiprocessing.Queue
+            The progress queue.
+        worker_id : int
+            The worker identifier.
         """
         self.seed = seed
         pyro.clear_param_store()
