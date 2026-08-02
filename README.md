@@ -34,6 +34,49 @@
 
 -----
 
+### Input data
+
+`MOBSTERm.fit` requires the following input:
+
+- `NV` (`numpy.ndarray`): Variant allele count for each mutation and sample (shape: `[num_mutations, num_samples]`).
+
+- `DP` (`numpy.ndarray`): Total read depth for each mutation and sample (shape: `[num_mutations, num_samples]`).
+
+- `mut_id` (`list` of `str`, default=`None`): Identifiers for each mutation.
+
+- `num_iter` (`int`, default=`2000`): Maximum number of SVI iterations for model fitting.
+
+- `K` (`list` of `int`, default=`[]`): Number of clonal/subclonal clusters to consider (e.g., `[2,3,4]`).
+
+- `purity` (`list` of `float`, default=`None`): Previously estimated purity of the tumor sample(s), one per sample. If `None`, purity is set to `1.` for every sample.
+
+- `kr` (`list` of `str`, default=`None`): Copy-number state of the sample(s), one per sample, in the form `'major_allele:minor_allele'` (e.g., `['1:1','2:1']`). If `None`, defaults to `'1:1'` for every sample.
+
+- `seed_list` (`list` of `int`, default=`[123,1234]`): List of random seeds for reproducibility.
+
+- `par_threshold` (`float`, default=`0.005`): Tolerance for parameter convergence. As ELBO oscillations are common in gradient-based VI, we monitor the convergence of all the parameters in the model; inference stops when `abs(new-old) / abs(old) < par_threshold` for 200 consecutive iterations, for all the parameters.
+
+- `loss_threshold` (`float`, default=`0.01`): Tolerance for loss convergence. As ELBO oscillations are common in gradient-based VI we monitor the convergence of the loss in the model; inference stops when `abs(new_loss-old_loss) / abs(old_loss) < loss_threshold` for 200 consecutive iterations.
+
+- `lr` (`float`, default=`0.01`): Learning rate for optimization.
+
+- `savefig` (`bool`, default=`False`): If `True`, saves output figures to `data_folder`.
+
+- `data_folder` (`str`, default=`None`): Path to the directory where results or figures should be saved.
+
+- `sample_names` (`list` of `str`, default=`None`): Names of the samples. If `None`, default names `sample1, sample2, ...` are used.
+
+- `quiet` (`bool`, default=`False`): If `True`, suppresses progress logs and output messages.
+
+- `num_of_threads` (`int`, default=`1`): Number of parallel threads to use during computation. Use `-1` to use all available CPUs.
+
+#### Notes
+- If `sample_names`, `purity` and `kr` are provided, their lengths must match the number of samples (`NV.shape[1]`).
+
+- `NV` and `DP` must have the same shape (`N x D`, where `N` is the number of mutations and `D` is the number of samples).
+
+-----
+
 #### Copyright and contacts
 
 - Elena Rivaroli, Cancer Data Science (CDS) Laboratory.
