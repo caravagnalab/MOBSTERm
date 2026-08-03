@@ -4,30 +4,26 @@
 ## To install
 
 ### From PyPI
-
-​```{bash}
+```{bash}
 pip install MOBSTERm
-​```
+```
 
 ### From source
 1. Clone the repository and enter the directory:
-   
-​```{bash}
+```{bash}
 git clone https://github.com/caravagnalab/MOBSTERm.git
 cd MOBSTERm
-​```
+```
 
 2. Install the package and its dependencies:
-   
-​```{bash}
+```{bash}
 pip install .
-​```
+```
 
 3. Verify the installation:
-
-​```{bash}
+```{bash}
 MOBSTERm -h
-​```
+```
 
 ## Running MOBSTERm
 There are two ways to use `MOBSTERm`: through the command-line interface, or directly in Python via the `fit` function.
