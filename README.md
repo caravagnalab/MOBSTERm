@@ -1,56 +1,56 @@
-- # MOBSTERm
+# MOBSTERm
   `MOBSTERm` is a Python package implementing a Bayesian model to perform multivariate subclonal deconvolution, allowing to detect neutral, private and selected clonal mutations in multi-region and longitudinal cancer datasets. The package also provides also a command-line interface.
 
-  ### To install
-  `pip install MOBSTERm`
+## To install
+```{bash}
+ pip install MOBSTERm
+```
+## Running MOBSTERm
+There are two ways to use `MOBSTERm`: through the command-line interface, or directly in Python via the `fit` function.
 
-  or 
+### Command-Line Interface
 
-  `pip install git+https://github.com/caravagnalab/MOBSTERm.git`
+The package installs a command-line tool named `MOBSTERm`. This tool takes as input a CSV file reporting, for each relevant mutation and for each sample,  the variant allele count (*NV*) and the total depth (*DP*) and clusterizes the mutations. The resulting clusters are saved in CSV files.
 
-  
+For an example of usage, download the file [`test_data.csv`](https://raw.githubusercontent.com/albertocasagrande/MOBSTERm/refs/heads/main/data/test_data.csv) from the GitHub repository, and, in the download directory, use the command. 
 
-  #### Command-Line Interface
+```{bash}
+ MOBSTERm test_data.csv deconvolution.csv -c "6,7,8"
+```
 
-  The package installs a command-line tool named `MOBSTERm`. This tool takes as input a CSV file reporting, for each relevant mutation and for each sample,  the variant allele count (*NV*) and the total depth (*DP*) and clusterizes the mutations. The resulting clusters are saved in CSV files.
+This command will produce the CSV file `deconvolution.csv` reporting the cluster identifier of each mutation.
 
-  
+Notice that only the columns "`mutation_id`", "`<Sample name>.NV`", and "`<Sample name>.DP`" are used during by `MOBSTERm`. The other columns are ignored. 
 
-  For an example of usage, download the file [`test_data.csv`](https://raw.githubusercontent.com/albertocasagrande/MOBSTERm/refs/heads/main/data/test_data.csv) from the GitHub repository, and, in the download directory, use the command. 
+To get a list of the options, use the option `-h`. 
 
-  ```{bash}
-   MOBSTERm test_data.csv deconvolution.csv
-  ```
+```{bash}
+MOBSTERm -h
+```
 
-  This command will produce the CSV file `deconvolution.csv` reporting the cluster identifier of each mutation.
+#### Command-line options
 
-  Notice that only the columns "`mutation_id`", "`<Sample name>.NV`", and "`<Sample name>.DP`" are used during by `MOBSTERm`. The other columns are ignored. 
+Run `MOBSTERm -h` for the full list of options. The most commonly used ones are:
 
-  To get a list of the options, use the option `-h`. 
+- `-c`, `--cluster-list` (default=`2,3,4`): List of cluster numbers to consider.
 
-  ```{bash}
-  MOBSTERm -h
-  ```
+- `num_iter` (`int`, default=`2000`): Maximum number of SVI iterations for model fitting.
 
-  #### Command-line options
+- `seed_list` (`list` of `int`, default=`[123,1234]`): List of random seeds for reproducibility.
 
-  Run `MOBSTERm -h` for the full list of options. The most commonly used ones are:
+- `-s`, `--samples` (default=`None`): Names of the samples to be processed.
 
-  - `-c`, `--cluster-list` (default=`2,3,4`): List of cluster numbers to consider.
+- `-p`, `--purity` (default=`1,1,...`): Purity of the sample(s).
 
-  - `num_iter` (`int`, default=`2000`): Maximum number of SVI iterations for model fitting.
-
-  - `seed_list` (`list` of `int`, default=`[123,1234]`): List of random seeds for reproducibility.
-  
-  - `-s`, `--samples` (default=`None`): Names of the samples to be processed.
-
-  - `-p`, `--purity` (default=`1,1,...`): Purity of the sample(s).
-
-  - `-k`, `--karyotypes` (default=`1:1,1:1,...`): Karyotype of the sample(s).
+- `-k`, `--karyotypes` (default=`1:1,1:1,...`): Karyotype of the sample(s).
 
 -----
 
-### Input data
+### Using the `fit` function
+
+Besides the command-line interface, `MOBSTERm` can be used directly in Python by calling the `fit` function. See the notebook [`test.ipynb`](test.ipynb) for an example of usage.
+
+#### Input data
 
 `MOBSTERm.fit` requires the following input:
 
