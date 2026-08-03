@@ -32,6 +32,22 @@
   MOBSTERm -h
   ```
 
+  #### Command-line options
+
+  Run `MOBSTERm -h` for the full list of options. The most commonly used ones are:
+
+  - `-c`, `--cluster-list` (default=`2,3,4`): List of cluster numbers to consider.
+
+  - `num_iter` (`int`, default=`2000`): Maximum number of SVI iterations for model fitting.
+
+  - `seed_list` (`list` of `int`, default=`[123,1234]`): List of random seeds for reproducibility.
+  
+  - `-s`, `--samples` (default=`None`): Names of the samples to be processed.
+
+  - `-p`, `--purity` (default=`1,1,...`): Purity of the sample(s).
+
+  - `-k`, `--karyotypes` (default=`1:1,1:1,...`): Karyotype of the sample(s).
+
 -----
 
 ### Input data
