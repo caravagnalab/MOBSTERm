@@ -2,9 +2,27 @@
   `MOBSTERm` is a Python package implementing a Bayesian model to perform multivariate subclonal deconvolution, allowing to detect neutral, private and selected clonal mutations in multi-region and longitudinal cancer datasets. The package also provides also a command-line interface.
 
 ## To install
-```{bash}
- pip install MOBSTERm
-```
+
+### From PyPI
+​```{bash}
+pip install MOBSTERm
+​```
+### From source
+1. Clone the repository and enter the directory:
+​```{bash}
+git clone https://github.com/caravagnalab/MOBSTERm.git
+cd MOBSTERm
+​```
+2. Install the package and its dependencies:
+​```{bash}
+pip install .
+​```
+
+3. Verify the installation:
+​```{bash}
+MOBSTERm -h
+​```
+
 ## Running MOBSTERm
 There are two ways to use `MOBSTERm`: through the command-line interface, or directly in Python via the `fit` function.
 
