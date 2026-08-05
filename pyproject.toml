@@ -25,6 +25,9 @@ dependencies = [
     "rich>=15.0.0"
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
 [project.scripts]
 MOBSTERm = "MOBSTERm.cli:main"
 
