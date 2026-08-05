@@ -1,4 +1,4 @@
-from utils.BoundedPareto import BoundedPareto
+from .BoundedPareto import BoundedPareto
 import numpy as np
 import pyro
 import pyro.distributions as dist
