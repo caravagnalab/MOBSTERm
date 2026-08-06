@@ -64,7 +64,6 @@ Run `MOBSTERm -h` for the full list of options. The most commonly used ones are:
 
 - `-k`, `--karyotypes` (default=`1:1,1:1,...`): Karyotype of the sample(s).
 
------
 
 ### Using the `fit` function
 
@@ -110,6 +109,10 @@ Besides the command-line interface, `MOBSTERm` can be used directly in Python by
 - If `sample_names`, `purity` and `kr` are provided, their lengths must match the number of samples (`NV.shape[1]`).
 
 - `NV` and `DP` must have the same shape (`N x D`, where `N` is the number of mutations and `D` is the number of samples).
+
+
+## Supported platforms
+MOBSTERm has been tested on Linux (x86_64) and macOS (Apple Silicon) using Python 3.11. The analyses reported in the manuscript were performed on CPU-based high-performance computing systems (AMD EPYC 7H12 and Intel Xeon Gold 6154/6126 nodes) managed through SLURM. MOBSTERm does not require a GPU and can be run on standard CPU hardware.
 
 -----
 
