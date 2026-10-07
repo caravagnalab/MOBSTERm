@@ -42,7 +42,7 @@ def share_memory_object(obj):
         return
 
 def fit_task(NV, DP, mut_id, num_iter, K, purity, kr, seed,
-             par_threshold, loss_threshold, lr, savefig,
+             par_threshold, loss_threshold, min_vaf, lr, savefig,
              data_folder, sample_names, K_idx,
              progress_queue, worker_id, process_semaphore,
              results, result_semaphore):
@@ -53,6 +53,7 @@ def fit_task(NV, DP, mut_id, num_iter, K, purity, kr, seed,
                         kr=kr, seed=seed,
                         par_threshold=par_threshold,
                         loss_threshold=loss_threshold,
+                        min_vaf=min_vaf,
                         savefig=savefig, data_folder=data_folder,
                         sample_names=sample_names,
                         progress_queue=progress_queue,
@@ -110,7 +111,7 @@ def handle_progress_bars(K, seed_list, num_iter, progress_queue):
 
 def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
         purity = None, kr = None, seed_list=[123,1234], par_threshold = 0.005,
-        loss_threshold = 0.01, lr = 0.01, savefig = False, data_folder = None,
+        loss_threshold = 0.01, min_vaf = 0.03, lr = 0.01, savefig = False, data_folder = None,
         sample_names = None, quiet = False, num_of_threads = 1):
     """Fit the variational inference model to subclonal deconvolution data.
 
@@ -148,6 +149,12 @@ def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
         Tolerance for loss convergence. Inference stops when
         `abs(new_loss - old_loss) / abs(old_loss) < loss_threshold` for 200 consecutive
         iterations.
+    min_vaf : float, default=0.03
+        Minimum variant allele frequency (VAF) for a mutation to be considered
+        detected in a sample. A mutation is kept only if, in every sample, its
+        VAF is either exactly 0 or at least `min_vaf`; mutations with an
+        ambiguous VAF strictly between 0 and `min_vaf` in any sample are
+        discarded.
     lr : float, default=0.01
         Learning rate for optimization.
     savefig : bool, default=False
@@ -214,7 +221,7 @@ def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
             p = mp.Process(
                 target=fit_task,
                 args=(NV, DP, mut_id, num_iter, K[K_idx], purity,
-                      kr, seed, par_threshold, loss_threshold, lr,
+                      kr, seed, par_threshold, loss_threshold, min_vaf, lr,
                       savefig, data_folder, sample_names, K_idx,
                       progress_queue, worker_id, process_semaphore,
                       results, result_semaphore)
@@ -240,7 +247,8 @@ class mobster_MV():
     def __init__(self, NV, DP, mut_id, K, purity,
                  kr, seed, par_threshold,
                  loss_threshold, savefig, data_folder,
-                 sample_names, progress_queue, worker_id):
+                 sample_names, progress_queue, worker_id,
+                 min_vaf=0.03):
         """ A class representing the stochastic model
 
         Parameters
@@ -287,6 +295,12 @@ class mobster_MV():
             The progress queue.
         worker_id : int
             The worker identifier.
+        min_vaf : float, default=0.03
+            Minimum variant allele frequency (VAF) for a mutation to be considered
+            detected in a sample. A mutation is kept only if, in every sample, its
+            VAF is either exactly 0 or at least `min_vaf`; mutations with an
+            ambiguous VAF strictly between 0 and `min_vaf` in any sample are
+            discarded.
         """
         self.seed = seed
         pyro.clear_param_store()
@@ -308,7 +322,7 @@ class mobster_MV():
                 NV = NV.unsqueeze(-1)
                 DP = DP.unsqueeze(-1)
             vaf = NV.numpy()/DP.numpy()
-            cond = np.where(np.all(((vaf == 0) | (vaf >= 0.03)), axis=1))[0]
+            cond = np.where(np.all(((vaf == 0) | (vaf >= min_vaf)), axis=1))[0]
             self.valid_indexes = cond
             NV = NV[cond,:]
             self.NV = torch.tensor(NV) if not isinstance(NV, torch.Tensor) else NV
@@ -391,7 +405,7 @@ class mobster_MV():
         # self.init_kappas = ((self.kmeans_centers_no_noise*(1-self.kmeans_centers_no_noise)/cov) -1)-self.k_beta_L
         # print(self.init_kappas)
 
-        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf) # also used for init delta
+        # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = torch.min(self.min_vaf_data) # also used for init delta
         self.kmeans_centers_no_noise[self.kmeans_centers_no_noise <= 0] = 1e-10 # it could be 0 because now we are considering the private mutations
         # self.kmeans_centers_no_noise[self.kmeans_centers_no_noise >= self.max_vaf] = self.max_vaf - 1e-5
 
@@ -689,11 +703,11 @@ class mobster_MV():
     def set_prior_parameters(self):
         # self.max_vaf = self.purity/2 # for a 1:1 karyotype, tensor D x 1
         self.max_vaf = self.compute_max_vaf() # tensor D x 1
-        self.min_vaf = self.compute_min_vaf()
+        self.min_vaf_data = self.compute_min_vaf()
 
         # phi_beta
         self.phi_beta_L = torch.ones(self.NV.shape[1])*0.1
-        # self.phi_beta_L = self.min_vaf
+        # self.phi_beta_L = self.min_vaf_data
         self.phi_beta_H = self.max_vaf
 
         # k_beta
@@ -712,7 +726,7 @@ class mobster_MV():
         self.max_alpha = torch.tensor(4.)
 
         # Bounded pareto
-        self.pareto_L = self.min_vaf
+        self.pareto_L = self.min_vaf_data
         # self.pareto_H = self.max_vaf
         self.pareto_H = self.compute_max_pareto()
         self.probs_pareto_init = torch.tensor(0.09)

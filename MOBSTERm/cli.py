@@ -188,6 +188,11 @@ class AppManager(object):
         parser.add_argument('-l', '--loss-threshold', dest='loss_threshold',
                             type=float, default=0.01,
                             help='Tolerance for loss convergence')
+        parser.add_argument('-m', '--min-vaf', dest='min_vaf',
+                            type=float, default=0.03,
+                            help=('Minimum variant allele frequency (VAF) for a '
+                                  + 'mutation to be considered detected in a '
+                                  + 'sample (default: 0.03)'))
         parser.add_argument('-r', '--learning-rate', dest='learning_rate',
                             type=float, default=0.01,
                             help='Learning rate for optimization')
@@ -304,6 +309,7 @@ class AppManager(object):
                                    kr=args.karyotypes, seed_list=args.seeds,
                                    par_threshold=args.par_threshold,
                                    loss_threshold=args.loss_threshold,
+                                   min_vaf=args.min_vaf,
                                    lr=args.learning_rate,
                                    num_of_threads=args.num_of_threads,
                                    quiet=self.quiet)
