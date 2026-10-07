@@ -111,6 +111,16 @@ Besides the command-line interface, `MOBSTERm` can be used directly in Python by
 - `NV` and `DP` must have the same shape (`N x D`, where `N` is the number of mutations and `D` is the number of samples).
 
 
+## Choosing karyotypes and handling heterogeneous copy numbers
+
+`MOBSTERm` models each mutation with a *single* karyotype per sample, so it must be run on a set of mutations that share the same `major:minor` state in every sample (one run per karyotype vector, e.g. `2:2,2:2,1:1,...`).
+
+- With many samples and highly unstable genomes, few mutations share an identical vector across all samples, and each class can be too small to fit. This is a known limitation of the model.
+- Run the tool on each class that has enough mutations (a few hundred or more), and use `-p`/`--purity` and `-k`/`--karyotypes` for that class.
+- To recover more mutations, run on a **subset of samples** (e.g. a subset with similar copy-number profiles, or excluding low-purity samples) and re-group mutations by the karyotype vector restricted to that subset. Fewer samples give larger classes.
+- Mutations on regions with an unreliable copy-number call (e.g. very low purity, ~<0.3) can be excluded, as the VAF peaks are not informative there.
+- Using CCF as in single-sample MOBSTER is not supported: input must be `NV` and `DP` together with purity and karyotype.
+
 ## Supported platforms
 MOBSTERm has been tested on Linux (x86_64) and macOS (Apple Silicon) using Python 3.11. The analyses reported in the manuscript were performed on CPU-based high-performance computing systems (AMD EPYC 7H12 and Intel Xeon Gold 6154/6126 nodes) managed through SLURM. MOBSTERm does not require a GPU and can be run on standard CPU hardware.
 
