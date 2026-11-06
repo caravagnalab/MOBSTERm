@@ -476,11 +476,9 @@ def plot_scatter_inference(mb: dict) -> Figure:
     ncols = min(3, num_pairs)
     nrows = (num_pairs + ncols - 1) // ncols
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
-    if nrows == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten()
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows),
+                             squeeze=False)
+    axes = axes.flatten()
 
     for ax, (x_col, y_col) in zip(axes, pairs):
         sns.scatterplot(data=df, x=x_col, y=y_col, hue='Cluster',
@@ -497,6 +495,65 @@ def plot_scatter_inference(mb: dict) -> Figure:
     # Turn off extra axes
     for ax in axes[len(pairs):]:
         ax.axis('off')
+
+    fig.tight_layout()
+
+    plt.close()
+
+    return fig
+
+def plot_model_selection(mb: dict) -> Figure:
+    """
+    Plots the ICL of the best fit for each number of clusters K
+
+    Args:
+        mb (dict): The result of `MOBSTERM.fit()` (it needs the 'runs' key).
+
+    Returns:
+        matplotlib.figure.Figure: A figure with K on the x axis and the ICL
+            on the y axis, with the selected model in red.
+
+    Raises:
+        ValueError: If `mb` is not the full result of `MOBSTERm.fit()`.
+    """
+
+    if not isinstance(mb, dict) or 'runs' not in mb:
+        raise ValueError('`plot_model_selection()` requires the full result '
+                         + 'of `MOBSTERm.fit()`')
+
+    runs = sorted(mb['runs'], key=lambda run: run['n_components'])
+    Ks = [run['n_components'] for run in runs]
+    icls = [float(run['icl']) for run in runs]
+    best_idx = int(np.argmin(icls))
+
+    # discrete x axis: one evenly spaced position per value of K
+    x = np.arange(len(Ks))
+
+    fig, ax = plt.subplots(figsize=(max(5, 0.6 * len(Ks) + 2), 4))
+    ax.plot(x, icls, color='black', linewidth=1.5, zorder=1)
+    ax.scatter(x, icls, color='black', s=50, edgecolor='white',
+               linewidth=1.5, zorder=2)
+    ax.scatter(x[best_idx], icls[best_idx], color='red', s=80,
+               edgecolor='white', linewidth=1.5, zorder=3)
+    # keep the label inside the axes when the best K is at either end
+    if best_idx == 0:
+        ha = 'left'
+    elif best_idx == len(Ks) - 1:
+        ha = 'right'
+    else:
+        ha = 'center'
+    ax.annotate(f"K = {Ks[best_idx]} (seed {runs[best_idx]['seed']})",
+                (x[best_idx], icls[best_idx]), xytext=(0, -12),
+                textcoords='offset points', ha=ha, va='top')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(Ks)
+    ax.set_xlim(-0.5, len(Ks) - 0.5)
+    ax.set_xlabel('K')
+    ax.set_ylabel('ICL (lower is better)')
+    ax.set_title('Model selection')
+    ax.grid(True, axis='y', linewidth=0.4, color='grey', alpha=0.7)
+    ax.margins(y=0.2)
 
     fig.tight_layout()
 

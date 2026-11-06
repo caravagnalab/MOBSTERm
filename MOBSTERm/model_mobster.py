@@ -43,9 +43,9 @@ def share_memory_object(obj):
 
 def fit_task(NV, DP, mut_id, num_iter, K, purity, kr, seed,
              par_threshold, loss_threshold, min_vaf, lr, savefig,
-             data_folder, sample_names, K_idx,
+             data_folder, sample_names,
              progress_queue, worker_id, process_semaphore,
-             results, result_semaphore):
+             results):
 
     torch.set_num_threads(1)
     with process_semaphore:
@@ -63,13 +63,8 @@ def fit_task(NV, DP, mut_id, num_iter, K, purity, kr, seed,
         for name in ['icl', 'bic']:
             mb.final_dict[name] = mb.final_dict[name].detach()
 
-    with result_semaphore:
-        K_result = results[K_idx]
-        if K_result is not None:
-            if K_result['icl'] > mb.final_dict['icl']:
-                results[K_idx] = mb.final_dict
-        else:
-            results[K_idx] = mb.final_dict
+    # each worker owns its own slot, so no lock is needed
+    results[worker_id] = mb.final_dict
 
 def handle_progress_bars(K, seed_list, num_iter, progress_queue):
 
@@ -112,7 +107,8 @@ def handle_progress_bars(K, seed_list, num_iter, progress_queue):
 def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
         purity = None, kr = None, seed_list=[123,1234], par_threshold = 0.005,
         loss_threshold = 0.01, min_vaf = 0.03, lr = 0.01, savefig = False, data_folder = None,
-        sample_names = None, quiet = False, num_of_threads = 1):
+        sample_names = None, quiet = False,
+        num_of_threads = 1):
     """Fit the variational inference model to subclonal deconvolution data.
 
     Parameters
@@ -173,9 +169,16 @@ def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
     Returns
     -------
     dict
-        A dictionary whose keys are `best_fit` and `runs` are reporting the
-        best fit for the passed parameters and the list of the possible results
-        ordered according to the parameter matching.
+        A dictionary with keys:
+
+        - `best_fit`: the fit with the lowest ICL among all runs.
+        - `runs`: the best fit (lowest ICL across seeds) for each value of K,
+          ordered by increasing ICL.
+        - `all_runs`: every fit, one for each pair of K and seed, ordered by
+          increasing ICL.
+
+        `runs` and `best_fit` refer to the same objects stored in `all_runs`,
+        so they do not duplicate the fits in memory.
     """
 
     for k in K:
@@ -212,19 +215,18 @@ def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
     process_semaphore = mp.Semaphore(num_of_threads)
 
     manager = mp.Manager()
-    results = manager.list([None for _ in range(len(K))])
-    result_semaphore = mp.Semaphore(1)
+    results = manager.list([None for _ in range(len(K)*len(seed_list))])
 
     worker_id = 0
-    for K_idx in range(len(K)):
+    for k in K:
         for seed in seed_list:
             p = mp.Process(
                 target=fit_task,
-                args=(NV, DP, mut_id, num_iter, K[K_idx], purity,
+                args=(NV, DP, mut_id, num_iter, k, purity,
                       kr, seed, par_threshold, loss_threshold, min_vaf, lr,
-                      savefig, data_folder, sample_names, K_idx,
+                      savefig, data_folder, sample_names,
                       progress_queue, worker_id, process_semaphore,
-                      results, result_semaphore)
+                      results)
             )
             p.start()
             processes.append(p)
@@ -234,13 +236,19 @@ def fit(NV, DP, mut_id = None, num_iter = 2000, K = [],
     for p in processes:
         p.join()
 
-    results_ordered = sorted(results, key=lambda d: d["icl"])
+    all_runs = sorted(results, key=lambda d: d["icl"])
 
-    best_fit = results_ordered[0]
+    # best seed for each K: its first run in ICL order
+    runs, seen_K = [], set()
+    for run in all_runs:
+        if run["n_components"] not in seen_K:
+            seen_K.add(run["n_components"])
+            runs.append(run)
 
     return {
-        "best_fit": best_fit,
-        "runs": results_ordered
+        "best_fit": all_runs[0],
+        "runs": runs,
+        "all_runs": all_runs
     }
 
 class mobster_MV():
@@ -929,6 +937,9 @@ class mobster_MV():
         best_noise = torch.zeros([self.K, self.NV.shape[1]])
         # for loop to sample different noise and see which gives the smaller loss
         self.cluster_initialization(compute_kmeans = True)
+        # noise_kmeans() adds the noise to self.best_centers, so each trial
+        # restarts from the original centers instead of the previous trial's
+        base_centers = self.best_centers.clone()
         for i in range(10):
             pyro.clear_param_store()
             mean = 0
@@ -936,13 +947,16 @@ class mobster_MV():
             D = self.NV.shape[1]
             self.gaussian_noise = dist.Normal(mean, std_dev).sample([self.K, D])
             # self.gaussian_noise = torch.zeros([self.K, D])
+            self.best_centers = base_centers.clone()
             self.cluster_initialization(compute_kmeans = False)
             loss = svi.step()
             if loss < min_loss:
+                min_loss = loss
                 best_noise = self.gaussian_noise.clone()
 
         pyro.clear_param_store()
         self.gaussian_noise = best_noise
+        self.best_centers = base_centers.clone()
         self.cluster_initialization(compute_kmeans = False, final = True)
         svi.step()
         gradient_norms = defaultdict(list)

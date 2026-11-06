@@ -18,6 +18,14 @@ def test_fit_smoke():
     assert "best_fit" in result
     assert "runs" in result
     assert len(result["runs"]) == 2
+    assert len(result["all_runs"]) == 4
+    assert sorted((r["n_components"], r["seed"]) for r in result["all_runs"]) \
+        == [(4, 11), (4, 22), (5, 11), (5, 22)]
+    for run in result["runs"]:
+        same_K = [r for r in result["all_runs"]
+                  if r["n_components"] == run["n_components"]]
+        assert run["icl"] == min(r["icl"] for r in same_K)
+    assert result["best_fit"] is result["runs"][0]
 
     best_fit = result["best_fit"]
 
